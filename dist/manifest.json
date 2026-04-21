@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Snapshot Governance Voting Extension",
+  "version": "1.0.0",
+  "description": "Connect your wallet to participate in Snapshot governance voting",
+  "permissions": ["storage"],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Snapshot Voter"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

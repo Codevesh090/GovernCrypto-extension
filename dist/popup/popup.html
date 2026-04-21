@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snapshot Voter</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Snapshot Voter</h1>
+      <p>Connect your wallet to participate in governance</p>
+    </div>
+    
+    <div class="content">
+      <!-- Disconnected State -->
+      <div id="disconnected-state" class="state">
+        <button id="connect-btn" class="connect-button">
+          Connect Wallet
+        </button>
+      </div>
+      
+      <!-- Connecting State -->
+      <div id="connecting-state" class="state hidden">
+        <div class="loading-spinner"></div>
+        <p>Connecting to wallet...</p>
+        <button id="cancel-btn" class="cancel-button">Cancel</button>
+      </div>
+      
+      <!-- Connected State -->
+      <div id="connected-state" class="state hidden">
+        <div class="wallet-info">
+          <div class="wallet-icon">🔗</div>
+          <div class="wallet-details">
+            <p class="wallet-label">Connected Wallet</p>
+            <p id="wallet-address" class="wallet-address"></p>
+          </div>
+        </div>
+        <button id="change-wallet-btn" class="change-wallet-button">
+          Change Wallet
+        </button>
+        <button id="disconnect-btn" class="disconnect-button">
+          Disconnect
+        </button>
+      </div>
+      
+      <!-- Error State -->
+      <div id="error-state" class="state hidden">
+        <div class="error-message">
+          <p id="error-text">Connection failed. Please try again.</p>
+        </div>
+        <button id="retry-btn" class="connect-button">
+          Try Again
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <script type="module" src="../popup.js"></script>
+</body>
+</html>

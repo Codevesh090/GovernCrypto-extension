@@ -1,0 +1,15 @@
+{
+  "name": "snapshot-governance-extension",
+  "version": "1.0.0",
+  "description": "Chrome extension for Snapshot governance voting with Web3Modal wallet connection",
+  "scripts": {
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "cp manifest.json dist/ && cp -r popup dist/",
+    "watch": "tsc --watch",
+    "dev": "npm run build && npm run watch"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "typescript": "^5.0.0"
+  }
+}
