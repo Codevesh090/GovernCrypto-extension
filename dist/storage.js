@@ -1,13 +1,18 @@
+"use strict";
 /**
  * Storage interface for managing wallet connection data
  * Uses chrome.storage.local for persistence across extension sessions
  */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WalletStorage = void 0;
+exports.isValidEthereumAddress = isValidEthereumAddress;
+exports.truncateAddress = truncateAddress;
 /**
  * Validates Ethereum address format
  * @param address - The address to validate
  * @returns true if valid Ethereum address format
  */
-export function isValidEthereumAddress(address) {
+function isValidEthereumAddress(address) {
     // Check if address starts with 0x and has 40 hexadecimal characters
     const ethAddressRegex = /^0x[a-fA-F0-9]{40}$/;
     return ethAddressRegex.test(address);
@@ -17,7 +22,7 @@ export function isValidEthereumAddress(address) {
  * @param address - Full Ethereum address
  * @returns Truncated address in format 0x1234...5678
  */
-export function truncateAddress(address) {
+function truncateAddress(address) {
     if (!isValidEthereumAddress(address)) {
         return address;
     }
@@ -26,7 +31,7 @@ export function truncateAddress(address) {
 /**
  * Chrome storage implementation for wallet data
  */
-export class WalletStorage {
+class WalletStorage {
     /**
      * Store wallet address with validation
      */
@@ -103,5 +108,6 @@ export class WalletStorage {
         }
     }
 }
+exports.WalletStorage = WalletStorage;
 WalletStorage.WALLET_ADDRESS_KEY = 'walletAddress';
 WalletStorage.CONNECTION_TIMESTAMP_KEY = 'connectionTimestamp';

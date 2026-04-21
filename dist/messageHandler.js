@@ -1,8 +1,12 @@
+"use strict";
 /**
  * Message handler for secure cross-origin communication
  * Handles wallet connection messages from hosted Web3Modal page
  */
-import { isValidEthereumAddress } from './storage.js';
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WalletMessageHandler = void 0;
+exports.createMessageHandler = createMessageHandler;
+const storage_js_1 = require("./storage.js");
 /**
  * Configuration for trusted domains
  * In production, this should be your actual hosted domain
@@ -15,7 +19,7 @@ const TRUSTED_DOMAINS = [
 /**
  * Message handler implementation with security validation
  */
-export class WalletMessageHandler {
+class WalletMessageHandler {
     constructor(onWalletConnected, onConnectionError) {
         this.onWalletConnected = onWalletConnected;
         this.onConnectionError = onConnectionError;
@@ -34,7 +38,7 @@ export class WalletMessageHandler {
      * Validate Ethereum address format
      */
     validateAddress(address) {
-        return isValidEthereumAddress(address);
+        return (0, storage_js_1.isValidEthereumAddress)(address);
     }
     /**
      * Process incoming wallet messages with security validation
@@ -121,9 +125,10 @@ export class WalletMessageHandler {
         console.log('Message handler stopped listening');
     }
 }
+exports.WalletMessageHandler = WalletMessageHandler;
 /**
  * Utility function to create and configure message handler
  */
-export function createMessageHandler(onWalletConnected, onConnectionError) {
+function createMessageHandler(onWalletConnected, onConnectionError) {
     return new WalletMessageHandler(onWalletConnected, onConnectionError);
 }
