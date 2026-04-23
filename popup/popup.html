@@ -7,6 +7,10 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
+  <!-- Offline Banner -->
+  <div id="offline-banner" class="offline-banner" style="display:none;">
+    <span>⚠ You are offline</span>
+  </div>
   <div class="container">
     <div class="header">
       <h1>Snapshot Voter</h1>
@@ -15,21 +19,21 @@
     
     <div class="content">
       <!-- Disconnected State -->
-      <div id="disconnected-state" class="state">
+      <div id="disconnected-state" class="screen state">
         <button id="connect-btn" class="connect-button">
           Connect Wallet
         </button>
       </div>
       
       <!-- Connecting State -->
-      <div id="connecting-state" class="state hidden">
+      <div id="connecting-state" class="screen state hidden">
         <div class="loading-spinner"></div>
         <p>Connecting to wallet...</p>
         <button id="cancel-btn" class="cancel-button">Cancel</button>
       </div>
       
       <!-- Connected State -->
-      <div id="connected-state" class="state hidden">
+      <div id="connected-state" class="screen state hidden">
         <div class="wallet-info">
           <div class="wallet-icon">🔗</div>
           <div class="wallet-details">
@@ -37,16 +41,19 @@
             <p id="wallet-address" class="wallet-address"></p>
           </div>
         </div>
+        <button id="disconnect-btn" class="disconnect-button">
+          Disconnect
+        </button>
         <button id="change-wallet-btn" class="change-wallet-button">
           Change Wallet
         </button>
-        <button id="disconnect-btn" class="disconnect-button">
-          Disconnect
+        <button id="btn-proposals" class="proposals-button">
+          View Proposals
         </button>
       </div>
       
       <!-- Error State -->
-      <div id="error-state" class="state hidden">
+      <div id="error-state" class="screen state hidden">
         <div class="error-message">
           <p id="error-text">Connection failed. Please try again.</p>
         </div>
@@ -58,5 +65,50 @@
   </div>
   
   <script src="../popup.js"></script>
+
+    <!-- Screen 3: Proposals List — Feature 2 -->
+    <div id="screen-proposals" class="screen" style="display:none;">
+      <div class="screen-header">
+        <button id="btn-back-proposals" class="btn-back">← Back</button>
+        <span class="screen-title">Proposals</span>
+        <button id="btn-reload-proposals" class="btn-reload" title="Reload proposals"><span class="reload-icon">↻</span></button>
+      </div>
+      <div class="tabs" id="dao-tabs">
+        <button class="tab active" data-tab="all">ALL</button>
+        <button class="tab" data-tab="ens.eth">ENS</button>
+        <button class="tab" data-tab="uniswapgovernance.eth">UNISWAP</button>
+        <button class="tab" data-tab="aave.eth">AAVE</button>
+        <button class="tab" data-tab="makerdao.eth">MAKER</button>
+        <button class="tab" data-tab="compound-governance.eth">COMPOUND</button>
+        <button class="tab" data-tab="curve.eth">CURVE</button>
+        <button class="tab" data-tab="balancer.eth">BALANCER</button>
+        <button class="tab" data-tab="sushigov.eth">SUSHI</button>
+        <button class="tab" data-tab="gitcoindao.eth">GITCOIN</button>
+        <button class="tab" data-tab="arbitrumfoundation.eth">ARBITRUM</button>
+      </div>
+      <div id="proposals-loading" class="proposals-status" style="display:none;">
+        <div class="loading-spinner"></div>
+        <p>Loading proposals...</p>
+      </div>
+      <div id="proposals-empty" class="proposals-status" style="display:none;">
+        <p>No proposals found for this DAO.</p>
+      </div>
+      <div id="proposals-error" class="proposals-status" style="display:none;">
+        <p id="proposals-error-msg"></p>
+        <button id="btn-retry" class="retry-button">Retry</button>
+      </div>
+      <div id="proposals-list"></div>
+      <div id="last-updated-label" class="last-updated"></div>
+    </div>
+
+    <!-- Screen 4: Proposal Detail — Feature 2 -->
+    <div id="screen-detail" class="screen" style="display:none;">
+      <div class="screen-header">
+        <button id="btn-back-detail" class="btn-back">← Back</button>
+        <span class="screen-title">Proposal Detail</span>
+      </div>
+      <div id="detail-content"></div>
+    </div>
+
 </body>
 </html>

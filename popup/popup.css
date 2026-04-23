@@ -5,8 +5,8 @@
 }
 
 body {
-  width: 350px;
-  min-height: 400px;
+  width: 380px;
+  min-height: 560px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #333;
@@ -205,4 +205,794 @@ body {
   color: #e74c3c;
   font-size: 14px;
   line-height: 1.4;
+}
+
+/* ============================================
+   Feature 2: DAO Proposals Display
+   ============================================ */
+
+:root {
+  --bg-main: #0d0d1a;
+  --bg-card: #1e1e3a;
+  --bg-header: #12122a;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --badge-active: #00ff88;
+  --badge-pending: #f59e0b;
+  --badge-closed: #6b7280;
+  --fill-green: #00ff88;
+  --fill-red: #ef4444;
+  --fill-grey: #4b5563;
+}
+
+/* Proposals button on connected screen */
+.proposals-button {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.proposals-button:hover {
+  border-color: white;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Screen layout */
+#screen-proposals,
+#screen-detail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-main);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+/* Screen header */
+.screen-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-header);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  min-height: 48px;
+}
+
+.btn-back {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-back:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.screen-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Proposals list */
+#proposals-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+/* Status messages — properly centered */
+.proposals-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  gap: 8px;
+}
+
+.proposals-status .loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top: 3px solid #00ff88;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* Retry button */
+.retry-button {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: all 0.2s ease;
+}
+
+.retry-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Proposal card */
+.proposal-card {
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.proposal-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: #252545;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.card-space {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.card-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
+/* Status badges */
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+.badge-active {
+  color: var(--badge-active);
+  border-color: var(--badge-active);
+}
+
+.badge-pending {
+  color: var(--badge-pending);
+  border-color: var(--badge-pending);
+}
+
+.badge-closed {
+  color: var(--badge-closed);
+  border-color: var(--badge-closed);
+}
+
+/* Choice rows on cards */
+.choice-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.choice-label {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 50px;
+}
+
+.color-green { color: var(--fill-green); }
+.color-red   { color: var(--fill-red); }
+.color-grey  { color: var(--badge-closed); }
+
+/* Progress bars */
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  background: #2d2d4a;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.fill-green { background: var(--fill-green); }
+.fill-red   { background: var(--fill-red); }
+.fill-grey  { background: var(--fill-grey); }
+
+/* Detail content */
+#detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.detail-header {
+  margin-bottom: 16px;
+}
+
+.detail-space {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.detail-time {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.detail-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  margin: 16px 0 8px;
+}
+
+.detail-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* Detail vote rows */
+.detail-choice-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.detail-choice-label {
+  font-size: 12px;
+  font-weight: 600;
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.detail-choice-pct {
+  font-size: 12px;
+  font-weight: 700;
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.detail-total {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+/* Vote buttons (disabled) */
+.vote-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.vote-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.vote-note {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: 10px;
+  font-style: italic;
+}
+
+/* ============================================
+   Feature 2 Enhancement: DAO Tabs
+   ============================================ */
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE */
+  white-space: nowrap;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+.tab {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  transition: all 0.15s ease;
+}
+
+.tab:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #e2e8f0;
+}
+
+.tab.active {
+  color: #fff;
+  border-color: #00ff88;
+  background: rgba(0, 255, 136, 0.08);
+}
+
+/* Reload button */
+.btn-reload {
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-left: auto;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.btn-reload:hover {
+  color: #00ff88;
+  border-color: #00ff88;
+}
+
+.btn-reload .reload-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* When loading: hide icon, show spinner inside button */
+.btn-reload.loading .reload-icon {
+  display: none;
+}
+
+.btn-reload.loading::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top: 2px solid #00ff88;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+/* Voting power display */
+.voting-power {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.voting-power-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  font-size: 11px;
+}
+
+.vp-label {
+  min-width: 55px;
+  font-weight: 600;
+}
+
+.vp-amount {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* Timeline — horizontal dot-line format */
+.timeline-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.timeline-horizontal {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+  padding: 4px 0;
+}
+
+.timeline-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00ff88;
+  border: 2px solid #00ff88;
+  flex-shrink: 0;
+}
+
+.timeline-dot.inactive {
+  background: transparent;
+  border-color: #4b5563;
+}
+
+.timeline-dot.pending-dot {
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+
+.timeline-node-label {
+  font-size: 9px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.timeline-node-date {
+  font-size: 8px;
+  color: #4b5563;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.timeline-line {
+  flex: 1;
+  height: 2px;
+  background: #2d2d4a;
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.timeline-line-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #00ff88;
+  border-radius: 1px;
+}
+
+.timeline-line-fill.ended {
+  background: #4b5563;
+}
+
+.timeline-line-fill.pending-line {
+  background: #f59e0b;
+  width: 0% !important;
+}
+
+/* Detail timeline — same horizontal dot-line style */
+.detail-timeline-section {
+  margin: 14px 0;
+}
+
+.detail-timeline-horizontal {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 4px 0;
+}
+
+.detail-timeline-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 60px;
+}
+
+.detail-timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #00ff88;
+  border: 2px solid #00ff88;
+  flex-shrink: 0;
+}
+
+.detail-timeline-dot.inactive {
+  background: transparent;
+  border-color: #4b5563;
+}
+
+.detail-timeline-dot.pending-dot {
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+
+.detail-timeline-node-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: 6px;
+  white-space: nowrap;
+}
+
+.detail-timeline-node-date {
+  font-size: 9px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.detail-timeline-line {
+  flex: 1;
+  height: 2px;
+  background: #2d2d4a;
+  position: relative;
+  margin-top: 4px;
+}
+
+.detail-timeline-line-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #00ff88;
+}
+
+.detail-timeline-line-fill.ended {
+  background: #4b5563;
+}
+
+/* Last updated label */
+.last-updated {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+
+/* Section divider */
+.detail-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  margin: 14px 0;
+}
+
+/* Urgent time label (ends soon) */
+.time-urgent {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  margin-top: 6px;
+}
+
+.time-urgent::before {
+  content: '⚡';
+  font-size: 10px;
+}
+
+.time-normal {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
+/* Event closed tag on timeline */
+.timeline-closed-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(107, 114, 128, 0.2);
+  border: 1px solid rgba(107, 114, 128, 0.4);
+  color: #9ca3af;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-top: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Read full proposal button */
+.read-full-btn {
+  display: block;
+  width: 100%;
+  padding: 11px;
+  margin-top: 14px;
+  background: transparent;
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  color: #00ff88;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.read-full-btn:hover {
+  background: rgba(0, 255, 136, 0.1);
+  border-color: #00ff88;
+}
+
+/* ============================================
+   Offline Banner
+   ============================================ */
+
+.offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background: #7f1d1d;
+  color: #fca5a5;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  padding: 6px 12px;
+  z-index: 9999;
+  border-bottom: 1px solid #ef4444;
+  letter-spacing: 0.3px;
+}
+
+/* Push content down when banner is visible */
+body.is-offline .container,
+body.is-offline #screen-proposals,
+body.is-offline #screen-detail {
+  padding-top: 32px;
+}
+
+/* ============================================
+   DAO Logos
+   ============================================ */
+
+.dao-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #2d2d4a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dao-logo-fallback {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Tab with logo */
+.tab-inner {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tab .dao-logo,
+.tab .dao-logo-fallback {
+  width: 14px;
+  height: 14px;
+  font-size: 7px;
+}
+
+/* Card space row with logo */
+.card-space-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+/* Detail space row with logo */
+.detail-space-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
 }
