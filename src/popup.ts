@@ -2,6 +2,13 @@
 import { WalletStorage, truncateAddress } from './storage.js';
 import { fetchProposals, fetchAllActiveProposals, fetchDAOProposals, DEFAULT_SPACE } from './snapshot.js';
 import { transformProposal, formatNumber, DisplayProposal } from './proposals.js';
+import { generateSummary, getMistralApiKey, saveMistralApiKey, getElevenLabsApiKey } from './mistral.js';
+import { getCachedSummary, cacheSummary } from './summaryCache.js';
+import { parseSummary, renderSummary, getFallbackSummary } from './summaryRenderer.js';
+import { recordWithSpeechAPI } from './voiceStt.js';
+import { speakTextStream, stopSpeaking } from './voiceTts.js';
+import { askAboutProposal, resetConversation, initConversation } from './voiceConversation.js';
+import { castVote } from './snapshotVote.js';
 
 console.log('Snapshot Governance Extension - Popup loaded');
 
@@ -54,7 +61,7 @@ let isConnecting = false;
 // ============================================
 // Feature 2: Navigation State
 // ============================================
-type AppScreen = 'connect' | 'connected' | 'proposals' | 'detail';
+type AppScreen = 'setup' | 'connect' | 'connected' | 'proposals' | 'detail';
 
 const appState: {
   screen: AppScreen;
@@ -86,6 +93,9 @@ function hideAllScreens(): void {
 function renderCurrentScreen(): void {
   hideAllScreens();
   switch (appState.screen) {
+    case 'setup':
+      document.getElementById('screen-setup')!.style.display = 'flex';
+      break;
     case 'connect':
       showConnectScreen();
       break;
@@ -98,7 +108,15 @@ function renderCurrentScreen(): void {
     case 'detail':
       document.getElementById('screen-detail')!.style.display = 'flex';
       if (!appState.selectedProposal) return;
+      setVoiceState('idle');
+      showVoiceTranscript('');
+      // Pre-load proposal context for voice conversation
+      initConversation(appState.selectedProposal);
       renderProposalDetail(appState.selectedProposal);
+      // Load AI summary async — does not block detail render
+      loadAISummary(appState.selectedProposal);
+      // Start wake word listener
+      setTimeout(() => startWakeWordListener(), 500);
       break;
   }
 }
@@ -212,6 +230,19 @@ window.addEventListener('message', async (event) => {
   }
 });
 
+// Listen for storage changes (real-time wallet connection detection)
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.connectedAddress) {
+    const newAddress = changes.connectedAddress.newValue;
+    if (newAddress && appState.screen === 'connect') {
+      console.log('Wallet connected via storage change:', newAddress);
+      isConnecting = false;
+      appState.address = newAddress;
+      showConnected(newAddress);
+    }
+  }
+});
+
 async function changeWallet() {
   await chrome.storage.local.remove('connectedAddress');
   isConnecting = true;
@@ -233,8 +264,41 @@ async function disconnectWallet() {
 }
 
 // ============================================
-// Feature 2: Proposals List Rendering
+// Feature 3: Setup Screen Logic
 // ============================================
+
+function showSetupError(msg: string): void {
+  const el = document.getElementById('setup-error')!;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideSetupError(): void {
+  const el = document.getElementById('setup-error')!;
+  el.style.display = 'none';
+}
+
+async function saveApiKeys(): Promise<void> {
+  const mistral = (document.getElementById('input-mistral-key') as HTMLInputElement).value.trim();
+  const eleven = (document.getElementById('input-elevenlabs') as HTMLInputElement).value.trim();
+
+  if (!mistral || !eleven) {
+    showSetupError('Both API keys are required.');
+    return;
+  }
+
+  hideSetupError();
+
+  // Store keys — never log them
+  await saveMistralApiKey(mistral);
+  await chrome.storage.local.set({ elevenLabsApiKey: eleven });
+
+  // Clear inputs after saving
+  (document.getElementById('input-mistral-key') as HTMLInputElement).value = '';
+  (document.getElementById('input-elevenlabs') as HTMLInputElement).value = '';
+
+  navigate('connect');
+}
 
 function showProposalsLoading(): void {
   document.getElementById('proposals-loading')!.style.display = 'flex';
@@ -477,21 +541,52 @@ function renderProposalDetail(proposal: DisplayProposal): void {
   header.appendChild(time);
   container.appendChild(header);
 
-  // Description
-  const descLabel = document.createElement('p');
-  descLabel.className = 'detail-section-label';
-  descLabel.textContent = 'Description';
-  container.appendChild(descLabel);
+  // AI Summary section — injected right after title
+  const summaryWrapper = document.createElement('div');
+  summaryWrapper.id = 'detail-summary-wrapper';
+  summaryWrapper.style.cssText = 'padding: 12px 16px 0;';
 
-  const body = document.createElement('p');
-  body.className = 'detail-body';
-  body.textContent = proposal.bodyDetail || 'No description available.';
-  container.appendChild(body);
+  const summaryBadge = document.createElement('div');
+  summaryBadge.className = 'summary-badge';
+  summaryBadge.textContent = '⚡ AI Summary';
 
-  // Divider
-  const div1 = document.createElement('div');
-  div1.className = 'detail-divider';
-  container.appendChild(div1);
+  const summaryLoading = document.createElement('div');
+  summaryLoading.id = 'summary-loading';
+  summaryLoading.className = 'summary-loading';
+  summaryLoading.innerHTML = '<div class="summary-spinner"></div><span>AI is analyzing this proposal...</span>';
+
+  const summaryError = document.createElement('div');
+  summaryError.id = 'summary-error';
+  summaryError.className = 'summary-error';
+  summaryError.style.display = 'none';
+  summaryError.textContent = 'Could not generate AI summary.';
+
+  const summaryNoKey = document.createElement('div');
+  summaryNoKey.id = 'summary-no-key';
+  summaryNoKey.className = 'summary-error';
+  summaryNoKey.style.display = 'none';
+  summaryNoKey.textContent = 'Please add your Mistral API key in settings.';
+
+  const summaryFallback = document.createElement('div');
+  summaryFallback.id = 'summary-fallback';
+  summaryFallback.className = 'summary-fallback';
+  summaryFallback.style.display = 'none';
+
+  const summaryContent = document.createElement('div');
+  summaryContent.id = 'detail-summary';
+  summaryContent.style.display = 'none';
+
+  summaryWrapper.appendChild(summaryBadge);
+  summaryWrapper.appendChild(summaryLoading);
+  summaryWrapper.appendChild(summaryError);
+  summaryWrapper.appendChild(summaryNoKey);
+  summaryWrapper.appendChild(summaryFallback);
+  summaryWrapper.appendChild(summaryContent);
+  container.appendChild(summaryWrapper);
+
+  const summaryDivider = document.createElement('hr');
+  summaryDivider.className = 'summary-divider';
+  container.appendChild(summaryDivider);
 
   // Votes section
   const votesLabel = document.createElement('p');
@@ -619,7 +714,7 @@ function renderProposalDetail(proposal: DisplayProposal): void {
   div3.className = 'detail-divider';
   container.appendChild(div3);
 
-  // Vote buttons (disabled)
+  // Vote buttons
   const voteLabel = document.createElement('p');
   voteLabel.className = 'detail-section-label';
   voteLabel.textContent = 'Cast Your Vote';
@@ -628,21 +723,30 @@ function renderProposalDetail(proposal: DisplayProposal): void {
   const voteButtons = document.createElement('div');
   voteButtons.className = 'vote-buttons';
 
-  proposal.choices.forEach(choice => {
+  const isActive = proposal.state === 'active';
+
+  proposal.choices.forEach((choice, idx) => {
     if (!choice) return;
     const btn = document.createElement('button');
-    btn.className = 'vote-btn';
+    btn.className   = 'vote-btn';
     btn.textContent = choice;
-    btn.disabled = true;
+    btn.disabled    = !isActive;
+
+    if (isActive) {
+      btn.addEventListener('click', () =>
+        handleVoteClick(proposal, idx + 1, voteButtons, voteStatus)
+      );
+    }
     voteButtons.appendChild(btn);
   });
 
   container.appendChild(voteButtons);
 
-  const note = document.createElement('p');
-  note.className = 'vote-note';
-  note.textContent = 'Voting coming in next update';
-  container.appendChild(note);
+  // Vote status message (replaces "Voting coming in next update")
+  const voteStatus = document.createElement('p');
+  voteStatus.className = 'vote-status';
+  voteStatus.textContent = isActive ? '' : 'Voting is closed for this proposal';
+  container.appendChild(voteStatus);
 
   // Read Full Proposal button
   const readBtn = document.createElement('a');
@@ -800,6 +904,382 @@ async function loadProposalsByTab(forceReload = false): Promise<void> {
 }
 
 // ============================================
+// Feature 3: AI Summary
+// ============================================
+
+const MIN_LOADER_MS = 300;
+
+function resetSummarySection(): void {
+  document.getElementById('summary-loading')!.style.display = 'flex';
+  document.getElementById('summary-error')!.style.display = 'none';
+  document.getElementById('summary-no-key')!.style.display = 'none';
+  document.getElementById('summary-fallback')!.style.display = 'none';
+  document.getElementById('detail-summary')!.style.display = 'none';
+}
+
+function showSummaryNoKey(): void {
+  document.getElementById('summary-loading')!.style.display = 'none';
+  document.getElementById('summary-no-key')!.style.display = 'block';
+}
+
+function showSummaryError(fallbackText: string): void {
+  document.getElementById('summary-loading')!.style.display = 'none';
+  document.getElementById('summary-error')!.style.display = 'block';
+  if (fallbackText) {
+    const el = document.getElementById('summary-fallback')!;
+    el.textContent = fallbackText; // textContent — never innerHTML
+    el.style.display = 'block';
+  }
+}
+
+async function holdMinLoader(loadStart: number): Promise<void> {
+  const elapsed = Date.now() - loadStart;
+  if (elapsed < MIN_LOADER_MS) {
+    await new Promise(r => setTimeout(r, MIN_LOADER_MS - elapsed));
+  }
+}
+
+async function loadAISummary(proposal: DisplayProposal): Promise<void> {
+  resetSummarySection();
+  const loadStart = Date.now();
+
+  // Check Mistral API key
+  const apiKey = await getMistralApiKey();
+
+  if (!apiKey) {
+    await holdMinLoader(loadStart);
+    showSummaryNoKey();
+    return;
+  }
+
+  // Check cache
+  let summary = await getCachedSummary(proposal.id);
+
+  if (!summary) {
+    try {
+      summary = await generateSummary(proposal.bodyFull, apiKey);
+      await cacheSummary(proposal.id, summary);
+    } catch (err) {
+      console.error('AI Summary generation failed:', err);
+      await holdMinLoader(loadStart);
+      showSummaryError(getFallbackSummary(proposal.bodyFull));
+      return;
+    }
+  }
+
+  await holdMinLoader(loadStart);
+
+  const sections = parseSummary(summary);
+  const container = document.getElementById('detail-summary')!;
+  renderSummary(sections, container);
+
+  document.getElementById('summary-loading')!.style.display = 'none';
+  container.style.display = 'block';
+}
+
+// ============================================
+// Feature 5: Voting
+// ============================================
+
+function setVoteButtons(container: HTMLElement, disabled: boolean): void {
+  container.querySelectorAll<HTMLButtonElement>('.vote-btn').forEach(btn => {
+    btn.disabled = disabled;
+  });
+}
+
+async function handleVoteClick(
+  proposal: DisplayProposal,
+  choiceIndex: number,
+  buttonsContainer: HTMLElement,
+  statusEl: HTMLElement
+): Promise<void> {
+  // Guard: wallet must be connected
+  const result  = await chrome.storage.local.get('connectedAddress');
+  const address: string | undefined = result.connectedAddress;
+  if (!address) {
+    statusEl.textContent = 'Connect wallet first';
+    statusEl.className   = 'vote-status error';
+    return;
+  }
+
+  // Confirmation dialog
+  const choiceName = proposal.choices[choiceIndex - 1] || `Choice ${choiceIndex}`;
+  const confirmed  = window.confirm(`Vote "${choiceName}" on:\n"${proposal.title}"?`);
+  if (!confirmed) return;
+
+  // Disable buttons + show loading
+  setVoteButtons(buttonsContainer, true);
+  statusEl.textContent = 'Submitting vote...';
+  statusEl.className   = 'vote-status loading';
+
+  try {
+    await castVote(proposal.id, proposal.spaceId, choiceIndex, address);
+    statusEl.textContent = 'Vote submitted successfully ✅';
+    statusEl.className   = 'vote-status success';
+    // Keep buttons disabled after success
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Vote failed. Please try again.';
+
+    if (msg.includes('already voted')) {
+      statusEl.textContent = 'You have already voted on this proposal';
+      statusEl.className   = 'vote-status error';
+      // Keep buttons disabled
+    } else if (msg === 'Signature rejected') {
+      statusEl.textContent = 'Signature rejected';
+      statusEl.className   = 'vote-status error';
+      setVoteButtons(buttonsContainer, false);
+    } else {
+      statusEl.textContent = 'Vote failed. Please try again.';
+      statusEl.className   = 'vote-status error';
+      setVoteButtons(buttonsContainer, false);
+    }
+  }
+}
+
+// ============================================
+// Feature 4: Voice AI Assistant
+// ============================================
+
+type VoiceState = 'idle' | 'recording' | 'thinking' | 'speaking';
+let voiceState: VoiceState = 'idle';
+let stopRecording: (() => void) | null = null;
+
+// Wake word listener — runs continuously on the detail screen
+let wakeWordRecognition: any = null;
+const WAKE_WORD = 'propo';
+
+function startWakeWordListener(): void {
+  const SpeechRecognition =
+    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
+  if (wakeWordRecognition) return; // already running
+
+  wakeWordRecognition = new SpeechRecognition();
+  wakeWordRecognition.continuous     = true;
+  wakeWordRecognition.interimResults = true;
+  wakeWordRecognition.lang           = 'en-US';
+
+  wakeWordRecognition.onresult = (event: any) => {
+    // Only trigger if voice is idle
+    if (voiceState !== 'idle') return;
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const text = event.results[i][0].transcript.toLowerCase().trim();
+      if (text.includes(WAKE_WORD)) {
+        // Wake word detected — stop listener and start full voice flow
+        stopWakeWordListener();
+        handleVoiceButtonClick();
+        break;
+      }
+    }
+  };
+
+  wakeWordRecognition.onend = () => {
+    // Auto-restart if still on detail screen and idle
+    if (appState.screen === 'detail' && voiceState === 'idle' && wakeWordRecognition) {
+      try { wakeWordRecognition.start(); } catch {}
+    }
+  };
+
+  wakeWordRecognition.onerror = (e: any) => {
+    // Restart on recoverable errors
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    wakeWordRecognition = null;
+  };
+
+  try {
+    wakeWordRecognition.start();
+    // Update status hint
+    const statusEl = document.getElementById('voice-status');
+    if (statusEl && voiceState === 'idle') {
+      statusEl.textContent = 'Say "Propo" or tap to ask AI';
+    }
+  } catch {
+    wakeWordRecognition = null;
+  }
+}
+
+function stopWakeWordListener(): void {
+  if (wakeWordRecognition) {
+    try { wakeWordRecognition.stop(); } catch {}
+    wakeWordRecognition = null;
+  }
+}
+
+/** Play a short chime using Web Audio API — no external files needed */
+function playChime(type: 'open' | 'close'): void {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (type === 'open') {
+      // Rising two-tone: friendly "ding ding"
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.35);
+    } else {
+      // Falling tone: soft "dong"
+      osc.frequency.setValueAtTime(660, ctx.currentTime);
+      osc.frequency.setValueAtTime(440, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+    }
+
+    osc.onended = () => ctx.close();
+  } catch {
+    // Audio not available — silent fail
+  }
+}
+
+function setVoiceState(state: VoiceState): void {
+  voiceState = state;
+  const btn      = document.getElementById('btn-voice') as HTMLButtonElement | null;
+  const statusEl = document.getElementById('voice-status');
+  if (!btn || !statusEl) return;
+
+  btn.disabled  = false;
+  btn.className = '';
+  statusEl.className = '';
+
+  switch (state) {
+    case 'idle':
+      btn.textContent      = '🎙️ Ask AI';
+      statusEl.textContent = 'Say "Propo" or tap to ask AI';
+      // Restart wake word listener when returning to idle
+      setTimeout(() => startWakeWordListener(), 300);
+      break;
+    case 'recording':
+      btn.textContent    = '⏹ Stop';
+      btn.classList.add('recording');
+      statusEl.textContent = '🔴 Listening...';
+      statusEl.classList.add('status-recording');
+      break;
+    case 'thinking':
+      btn.textContent    = '⏳ Thinking...';
+      btn.disabled       = true;
+      statusEl.textContent = 'AI is thinking...';
+      statusEl.classList.add('status-thinking');
+      break;
+    case 'speaking':
+      btn.textContent    = '⏹ Stop';
+      btn.classList.add('speaking');
+      statusEl.textContent = '🔊 Speaking...';
+      statusEl.classList.add('status-speaking');
+      break;
+  }
+}
+
+function showVoiceTranscript(text: string): void {
+  const el = document.getElementById('voice-transcript');
+  if (!el) return;
+  el.textContent = text;
+  el.style.display = text ? 'block' : 'none';
+}
+
+function showVoiceError(msg: string): void {
+  const statusEl = document.getElementById('voice-status');
+  if (statusEl) {
+    statusEl.textContent = msg;
+    statusEl.className   = 'status-error';
+  }
+  stopRecording = null;
+  setVoiceState('idle');
+}
+
+async function handleVoiceButtonClick(): Promise<void> {
+  // Stop speaking
+  if (voiceState === 'speaking') {
+    stopSpeaking();
+    setVoiceState('idle');
+    return;
+  }
+
+  // Stop recording early
+  if (voiceState === 'recording') {
+    stopRecording?.();
+    return;
+  }
+
+  if (voiceState !== 'idle') return;
+
+  const proposal   = appState.selectedProposal;
+  if (!proposal) return;
+
+  const elevenKey  = await getElevenLabsApiKey();
+  const mistralKey = await getMistralApiKey();
+
+  if (!elevenKey || !mistralKey) {
+    showVoiceError('API keys missing — check setup.');
+    return;
+  }
+
+  // Step 1: Record with Web Speech API (real-time transcript, no popup window)
+  setVoiceState('recording');
+  showVoiceTranscript('');
+  stopWakeWordListener(); // pause wake word while recording
+  playChime('open');
+
+  const { promise, stop } = recordWithSpeechAPI(
+    (interim, _isFinal) => {
+      if (interim) showVoiceTranscript(interim);
+    },
+    2000
+  );
+  stopRecording = stop;
+
+  let transcript: string;
+  try {
+    transcript = await promise;
+  } catch (err: any) {
+    console.error('[Voice] Recording failed:', err);
+    showVoiceError(err?.message || 'Microphone access denied or unavailable.');
+    return;
+  } finally {
+    stopRecording = null;
+    playChime('close'); // 🔕 mic closed sound
+  }
+
+  if (!transcript) {
+    showVoiceError('No speech detected. Try again.');
+    setVoiceState('idle');
+    return;
+  }
+
+  showVoiceTranscript(`"${transcript}"`);
+
+  // Step 2: Mistral (context-aware, plain text response)
+  setVoiceState('thinking');
+  let answer: string;
+  try {
+    answer = await askAboutProposal(transcript, mistralKey);
+  } catch (err: any) {
+    console.error('[Voice] Mistral failed:', err);
+    showVoiceError('AI response failed. Try again.');
+    return;
+  }
+
+  // Step 3: TTS — speak the clean plain-text answer
+  setVoiceState('speaking');
+  try {
+    await speakTextStream(answer, elevenKey);
+  } catch (err: any) {
+    console.error('[Voice] TTS failed:', err);
+    showVoiceError('Could not play audio response.');
+    return;
+  }
+
+  setVoiceState('idle');
+}
+
+// ============================================
 // Initialize
 // ============================================
 
@@ -815,6 +1295,17 @@ async function initialize() {
   changeWalletBtn   = document.getElementById('change-wallet-btn') as HTMLButtonElement;
   walletAddressEl   = document.getElementById('wallet-address')!;
   errorTextEl       = document.getElementById('error-text')!;
+
+  // Wire setup save button
+  document.getElementById('btn-save-keys')!.addEventListener('click', saveApiKeys);
+
+  // Allow Enter key to submit setup form
+  document.getElementById('input-elevenlabs')!.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveApiKeys();
+  });
+  document.getElementById('input-mistral-key')!.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveApiKeys();
+  });
 
   // Feature 1 button wiring
   connectBtn.addEventListener('click', connectWallet);
@@ -839,6 +1330,9 @@ async function initialize() {
   });
 
   document.getElementById('btn-back-detail')!.addEventListener('click', () => {
+    stopSpeaking();
+    stopWakeWordListener();
+    resetConversation();
     navigate('proposals');
     // Use cached proposals — no re-fetch, preserve active tab
     if (appState.proposals.length > 0) {
@@ -853,8 +1347,19 @@ async function initialize() {
 
   document.getElementById('btn-retry')!.addEventListener('click', loadProposalsByTab);
 
+  // Feature 4: Voice AI button
+  document.getElementById('btn-voice')!.addEventListener('click', handleVoiceButtonClick);
+
   // Bind tab click events
   bindTabEvents();
+
+  // Check for API keys first — show setup if missing
+  const keysData = await chrome.storage.local.get(['mistralApiKey', 'elevenLabsApiKey']);
+  if (!keysData.mistralApiKey || !keysData.elevenLabsApiKey) {
+    navigate('setup');
+    updateOfflineBanner();
+    return;
+  }
 
   // Check for existing wallet connection
   const result = await chrome.storage.local.get('connectedAddress');

@@ -216,8 +216,567 @@
       spaceName: raw.space?.name || raw.space?.id || "Unknown DAO",
       spaceId: raw.space?.id || "",
       start: raw.start || 0,
-      end: raw.end || 0
+      end: raw.end || 0,
+      bodyFull: stripMarkdown(raw.body || "").slice(0, 3e3)
+      // up to 3000 chars for AI summary
     };
+  }
+
+  // src/mistral.ts
+  var MISTRAL_ENDPOINT = "https://api.mistral.ai/v1/chat/completions";
+  var MISTRAL_MODEL = "mistral-small-latest";
+  var TIMEOUT_MS = 1e4;
+  var SYSTEM_PROMPT = `You are summarizing a DAO governance proposal for a Chrome extension UI. The user is a token holder who wants to understand what they're voting on quickly.
+
+You MUST format your response EXACTLY like this. Do not add any extra text, preamble, or explanation outside of these 6 sections:
+
+**What this proposal wants:**
+[1-2 sentences, plain English, what is being asked]
+
+**Why it matters:**
+[2-3 sentences, the problem it solves or the impact it has]
+
+**In simple terms:**
+> [One punchy quote that captures the whole proposal in one line]
+
+**Vote type:**
+[Either "Signal only \u2014 a final onchain vote will follow" or "Onchain \u2014 this directly executes if passed"]
+
+**What a YES vote means:**
+[1 sentence \u2014 concrete outcome if passed]
+
+**What a NO vote means:**
+[1 sentence \u2014 what stays the same if rejected]
+
+STRICT RULES \u2014 follow every one:
+- Output ONLY the 6 sections above, nothing else before or after
+- Use EXACTLY the heading labels shown, with ** on both sides
+- No crypto jargon unless unavoidable
+- No bullet point lists inside sections
+- Total length: 100-130 words maximum
+- Always include all 6 sections completely \u2014 never skip or merge sections
+- If the proposal has multiple numbered points, identify the single most important outcome and lead with that
+- If a budget or funding amount is mentioned, include the exact figure in the YES vote outcome
+- Ignore legal disclaimers, indemnification clauses, and committee appointment details
+- Ignore internal tables and wallet balances \u2014 summarize the net ask only
+- If the proposal body is empty or under 20 words, respond with exactly: "No description provided for this proposal."`;
+  var MAX_RETRIES = 3;
+  var RETRY_DELAY_MS = 1e3;
+  async function saveMistralApiKey(apiKey) {
+    await chrome.storage.local.set({ mistralApiKey: apiKey });
+  }
+  async function getMistralApiKey() {
+    const result = await chrome.storage.local.get("mistralApiKey");
+    return result.mistralApiKey || null;
+  }
+  async function getElevenLabsApiKey() {
+    const result = await chrome.storage.local.get("elevenLabsApiKey");
+    return result.elevenLabsApiKey || null;
+  }
+  async function callMistral(messages, apiKey, maxTokens = 300) {
+    const requestBody = JSON.stringify({
+      model: MISTRAL_MODEL,
+      messages,
+      temperature: 0.4,
+      max_tokens: maxTokens
+    });
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      try {
+        const response = await fetch(MISTRAL_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+          },
+          signal: controller.signal,
+          body: requestBody
+        });
+        clearTimeout(timeoutId);
+        if ((response.status === 503 || response.status === 429) && attempt < MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+          continue;
+        }
+        if (!response.ok) {
+          const errorBody = await response.text().catch(() => "");
+          throw new Error(`Mistral API error: ${response.status} \u2014 ${errorBody}`);
+        }
+        const json = await response.json();
+        const text = json?.choices?.[0]?.message?.content;
+        if (!text) throw new Error("Mistral returned empty response");
+        return text.trim();
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === "AbortError") throw new Error("Request timed out");
+        if (attempt < MAX_RETRIES && !err.message?.includes("Mistral API error")) {
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error("Mistral API failed after maximum retries");
+  }
+  async function generateSummary(proposalBody, apiKey) {
+    if (!proposalBody || proposalBody.trim().length < 20) {
+      return "No description provided for this proposal.";
+    }
+    const requestBody = JSON.stringify({
+      model: MISTRAL_MODEL,
+      messages: [
+        {
+          role: "user",
+          content: `${SYSTEM_PROMPT}
+
+Proposal to summarize:
+${proposalBody}`
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 600
+    });
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      console.log(`[Mistral] Attempt ${attempt}/${MAX_RETRIES} \u2014 sending request to:`, MISTRAL_ENDPOINT);
+      console.log("[Mistral] Request body:", requestBody);
+      try {
+        const response = await fetch(MISTRAL_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+          },
+          signal: controller.signal,
+          body: requestBody
+        });
+        clearTimeout(timeoutId);
+        console.log(`[Mistral] Response status: ${response.status} ${response.statusText}`);
+        if ((response.status === 503 || response.status === 429) && attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAY_MS * attempt;
+          console.warn(`[Mistral] ${response.status} received, retrying in ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+        if (!response.ok) {
+          const errorBody = await response.text().catch(() => "(could not read error body)");
+          console.error(`[Mistral] Error response body:`, errorBody);
+          throw new Error(`Mistral API error: ${response.status} \u2014 ${errorBody}`);
+        }
+        const json = await response.json();
+        console.log("[Mistral] Response JSON:", JSON.stringify(json, null, 2));
+        const text = json?.choices?.[0]?.message?.content;
+        if (!text) {
+          console.error("[Mistral] Empty text in response. Full JSON:", json);
+          throw new Error("Mistral returned empty response");
+        }
+        return text.trim();
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === "AbortError") {
+          console.error("[Mistral] Request timed out");
+          throw new Error("Request timed out");
+        }
+        if (attempt < MAX_RETRIES && !err.message?.includes("Mistral API error")) {
+          console.warn(`[Mistral] Attempt ${attempt} failed: ${err.message}, retrying...`);
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error("Mistral API failed after maximum retries");
+  }
+
+  // src/summaryCache.ts
+  var CACHE_PREFIX = "summary_";
+  var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
+  async function getCachedSummary(proposalId) {
+    try {
+      const key = CACHE_PREFIX + proposalId;
+      const result = await chrome.storage.local.get(key);
+      if (!result[key]) return null;
+      const entry = JSON.parse(result[key]);
+      if (Date.now() - entry.createdAt > CACHE_TTL_MS) {
+        await chrome.storage.local.remove(key);
+        return null;
+      }
+      return entry.summary;
+    } catch {
+      return null;
+    }
+  }
+  async function cacheSummary(proposalId, summary) {
+    try {
+      const key = CACHE_PREFIX + proposalId;
+      const entry = JSON.stringify({ summary, createdAt: Date.now() });
+      await chrome.storage.local.set({ [key]: entry });
+    } catch {
+    }
+  }
+
+  // src/summaryRenderer.ts
+  var SUMMARY_HEADINGS = [
+    "**What this proposal wants:**",
+    "**Why it matters:**",
+    "**In simple terms:**",
+    "**Vote type:**",
+    "**What a YES vote means:**",
+    "**What a NO vote means:**"
+  ];
+  function parseSummary(summaryText) {
+    if (!summaryText || !summaryText.trim()) return [];
+    const sections = [];
+    const lines = summaryText.split("\n");
+    let currentHeading = null;
+    let currentContent = [];
+    for (const line of lines) {
+      const trimmed = line.trim().replace(/\s+/g, " ");
+      if (!trimmed) continue;
+      const matchedHeading = SUMMARY_HEADINGS.find(
+        (h) => trimmed.toLowerCase().startsWith(h.toLowerCase())
+      );
+      if (matchedHeading) {
+        if (currentHeading !== null) {
+          sections.push({
+            heading: currentHeading.replace(/\*\*/g, "").trim(),
+            content: currentContent.join(" ").trim()
+          });
+        }
+        currentHeading = matchedHeading;
+        currentContent = [];
+        const inline = trimmed.slice(matchedHeading.length).trim();
+        if (inline) currentContent.push(inline);
+      } else if (currentHeading !== null) {
+        const contentLine = trimmed.startsWith(">") ? trimmed.slice(1).trim() : trimmed;
+        if (contentLine) currentContent.push(contentLine);
+      }
+    }
+    if (currentHeading !== null) {
+      sections.push({
+        heading: currentHeading.replace(/\*\*/g, "").trim(),
+        content: currentContent.join(" ").trim()
+      });
+    }
+    return sections;
+  }
+  function renderSummary(sections, containerEl) {
+    containerEl.innerHTML = "";
+    const fragment = document.createDocumentFragment();
+    for (const section of sections) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "summary-section";
+      const heading = document.createElement("span");
+      heading.className = "summary-heading";
+      heading.textContent = section.heading;
+      const content = document.createElement("p");
+      content.className = "summary-content";
+      const headingLower = section.heading.toLowerCase();
+      if (headingLower.includes("in simple terms")) {
+        content.className += " summary-quote";
+        content.textContent = section.content;
+      } else if (headingLower.includes("yes vote")) {
+        const tag = document.createElement("span");
+        tag.className = "vote-tag vote-tag-yes";
+        tag.textContent = "YES";
+        content.appendChild(tag);
+        content.appendChild(document.createTextNode(section.content));
+      } else if (headingLower.includes("no vote")) {
+        const tag = document.createElement("span");
+        tag.className = "vote-tag vote-tag-no";
+        tag.textContent = "NO";
+        content.appendChild(tag);
+        content.appendChild(document.createTextNode(section.content));
+      } else {
+        content.textContent = section.content;
+      }
+      wrapper.appendChild(heading);
+      wrapper.appendChild(content);
+      fragment.appendChild(wrapper);
+    }
+    containerEl.appendChild(fragment);
+  }
+  function getFallbackSummary(bodyText) {
+    if (!bodyText || bodyText.trim().length === 0) {
+      return "No description available for this proposal.";
+    }
+    const sentences = bodyText.replace(/\n+/g, " ").split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+    const first3 = sentences.slice(0, 3).join(" ");
+    const truncated = first3.length > 300 ? first3.slice(0, 300) + "..." : first3;
+    return truncated || bodyText.slice(0, 300);
+  }
+
+  // src/voiceStt.ts
+  function recordWithSpeechAPI(onTranscript, silenceMs = 2e3) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      return {
+        promise: Promise.reject(new Error("Speech recognition not supported in this browser.")),
+        stop: () => {
+        }
+      };
+    }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.maxAlternatives = 1;
+    let finalTranscript = "";
+    let silenceTimer = null;
+    let resolved = false;
+    const promise = new Promise((resolve, reject) => {
+      recognition.onresult = (event) => {
+        let interim = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            finalTranscript += result[0].transcript + " ";
+          } else {
+            interim += result[0].transcript;
+          }
+        }
+        onTranscript((finalTranscript + interim).trim(), false);
+        if (silenceTimer) {
+          clearTimeout(silenceTimer);
+          silenceTimer = null;
+        }
+        silenceTimer = setTimeout(() => {
+          recognition.stop();
+        }, silenceMs);
+      };
+      recognition.onend = () => {
+        if (resolved) return;
+        resolved = true;
+        if (silenceTimer) clearTimeout(silenceTimer);
+        const result = finalTranscript.trim();
+        onTranscript(result, true);
+        if (result) {
+          resolve(result);
+        } else {
+          reject(new Error("No speech detected. Please try again."));
+        }
+      };
+      recognition.onerror = (event) => {
+        if (resolved) return;
+        resolved = true;
+        if (silenceTimer) clearTimeout(silenceTimer);
+        const msg = event.error === "not-allowed" ? "Microphone access denied. Click Allow when Chrome asks." : event.error === "no-speech" ? "No speech detected. Please try again." : event.error === "network" ? "Network error during speech recognition." : `Speech error: ${event.error}`;
+        reject(new Error(msg));
+      };
+      try {
+        recognition.start();
+      } catch (err) {
+        resolved = true;
+        reject(new Error(`Could not start microphone: ${err.message}`));
+      }
+    });
+    const stop = () => {
+      if (!resolved) {
+        try {
+          recognition.stop();
+        } catch {
+        }
+      }
+    };
+    return { promise, stop };
+  }
+
+  // src/voiceTts.ts
+  var TTS_BASE = "https://api.elevenlabs.io/v1/text-to-speech";
+  var DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
+  var currentAudio = null;
+  function stopSpeaking() {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.src = "";
+      currentAudio = null;
+    }
+  }
+  async function speakTextStream(text, apiKey, voiceId = DEFAULT_VOICE_ID) {
+    stopSpeaking();
+    const res = await fetch(`${TTS_BASE}/${voiceId}/stream`, {
+      method: "POST",
+      headers: {
+        "xi-api-key": apiKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text,
+        model_id: "eleven_turbo_v2",
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.7
+        }
+      })
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      throw new Error(`TTS error ${res.status}: ${err}`);
+    }
+    const reader = res.body.getReader();
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+    const blob = new Blob(chunks, { type: "audio/mpeg" });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    currentAudio = audio;
+    await new Promise((resolve, reject) => {
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        currentAudio = null;
+        resolve();
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        currentAudio = null;
+        reject(new Error("Audio playback error"));
+      };
+      audio.play().catch(reject);
+    });
+  }
+
+  // src/voiceConversation.ts
+  var conversationHistory = [];
+  var currentProposalContext = "";
+  function stripMarkdownForSpeech(text) {
+    return text.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/#{1,6}\s+/g, "").replace(/^>\s*/gm, "").replace(/`{1,3}[^`]*`{1,3}/g, "").replace(/^\s*[-*+]\s+/gm, "").replace(/^\s*\d+\.\s+/gm, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\n{2,}/g, " ").replace(/\n/g, " ").trim();
+  }
+  function initConversation(proposal) {
+    conversationHistory = [];
+    currentProposalContext = `PROPOSAL TITLE: ${proposal.title}
+
+PROPOSAL BODY:
+${proposal.bodyFull || proposal.bodyDetail}`;
+  }
+  function resetConversation() {
+    conversationHistory = [];
+    currentProposalContext = "";
+  }
+  async function askAboutProposal(question, mistralApiKey) {
+    if (!currentProposalContext) {
+      return "No proposal loaded. Please open a proposal first.";
+    }
+    const systemPrompt = `You are a DAO governance assistant. A user is asking you questions about a specific governance proposal using voice.
+
+RULES:
+- Answer ONLY based on the proposal information provided below.
+- If the question is unrelated to this proposal, say: "I can only help you understand this proposal."
+- Be conversational, warm, and clear \u2014 like a knowledgeable friend explaining something important.
+- Give answers that are 3 to 5 sentences long. Never give one-sentence answers.
+- If the user asks to understand, explain, or summarize the proposal, give a thorough explanation AND include a real-world analogy or example to make it concrete. For example: "Think of it like..." or "A simple way to picture this is..."
+- If the user asks a specific question, answer it directly and then add one sentence of useful context.
+- NEVER use markdown, asterisks, bullet points, bold, italic, hashtags, or any special characters.
+- Write in plain spoken English only. Your response will be read aloud by a text-to-speech engine.
+- Do not start your answer with "Sure", "Of course", "Great question", or "Certainly".
+- Numbers and percentages are fine to say aloud.
+
+${currentProposalContext}`;
+    const messages = [
+      { role: "system", content: systemPrompt }
+    ];
+    const recentHistory = conversationHistory.slice(-6);
+    for (const turn of recentHistory) {
+      messages.push({ role: turn.role, content: turn.content });
+    }
+    messages.push({ role: "user", content: question });
+    const rawResponse = await callMistral(messages, mistralApiKey, 400);
+    const cleanResponse = stripMarkdownForSpeech(rawResponse);
+    conversationHistory.push({ role: "user", content: question });
+    conversationHistory.push({ role: "assistant", content: cleanResponse });
+    if (conversationHistory.length > 8) {
+      conversationHistory = conversationHistory.slice(-8);
+    }
+    return cleanResponse;
+  }
+
+  // src/snapshotVote.ts
+  var SNAPSHOT_DOMAIN = {
+    name: "snapshot",
+    version: "0.1.4",
+    chainId: 1,
+    verifyingContract: "0xC4cDb0a651724D7DB1b3b2F08b8bF61b5a33952D"
+  };
+  var VOTE_TYPE = [
+    { name: "from", type: "address" },
+    { name: "space", type: "string" },
+    { name: "timestamp", type: "uint64" },
+    { name: "proposal", type: "bytes32" },
+    { name: "choice", type: "uint32" },
+    { name: "reason", type: "string" },
+    { name: "app", type: "string" },
+    { name: "metadata", type: "string" }
+  ];
+  var SNAPSHOT_RELAY = "https://seq.snapshot.org/";
+  function buildVotePayload(proposalId, spaceId, choiceIndex, voterAddress) {
+    return {
+      from: voterAddress,
+      space: spaceId,
+      timestamp: Math.floor(Date.now() / 1e3),
+      proposal: proposalId,
+      choice: choiceIndex,
+      reason: "",
+      app: "govercrypto",
+      metadata: "{}",
+      type: "vote"
+    };
+  }
+  function buildTypedData(payload) {
+    return {
+      domain: SNAPSHOT_DOMAIN,
+      types: { Vote: VOTE_TYPE },
+      primaryType: "Vote",
+      message: payload
+    };
+  }
+  async function castVote(proposalId, spaceId, choiceIndex, voterAddress) {
+    const payload = buildVotePayload(proposalId, spaceId, choiceIndex, voterAddress);
+    const typedData = buildTypedData(payload);
+    const ethereum = window.ethereum;
+    if (!ethereum) {
+      throw new Error("No wallet provider found");
+    }
+    let signature;
+    try {
+      signature = await ethereum.request({
+        method: "eth_signTypedData_v4",
+        params: [voterAddress, JSON.stringify(typedData)]
+      });
+    } catch (err) {
+      if (err?.code === 4001 || err?.message?.toLowerCase().includes("user rejected")) {
+        throw new Error("Signature rejected");
+      }
+      throw new Error(`Signing failed: ${err?.message || err}`);
+    }
+    let response;
+    try {
+      response = await fetch(SNAPSHOT_RELAY, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address: voterAddress,
+          sig: signature,
+          data: typedData
+        })
+      });
+    } catch {
+      throw new Error("Network error. Please try again.");
+    }
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      if (body.toLowerCase().includes("already voted")) {
+        throw new Error("You have already voted on this proposal");
+      }
+      throw new Error(`Relay error ${response.status}: ${body}`);
+    }
+    const json = await response.json().catch(() => ({}));
+    if (json?.error?.toLowerCase?.().includes("already voted")) {
+      throw new Error("You have already voted on this proposal");
+    }
   }
 
   // src/popup.ts
@@ -261,7 +820,7 @@
   };
   var isLoadingProposals = false;
   var lastFetchTime = 0;
-  var CACHE_TTL_MS = 60 * 60 * 1e3;
+  var CACHE_TTL_MS2 = 60 * 60 * 1e3;
   var autoReloadTimer;
   function hideAllScreens() {
     document.querySelectorAll(".screen").forEach((el) => {
@@ -271,6 +830,9 @@
   function renderCurrentScreen() {
     hideAllScreens();
     switch (appState.screen) {
+      case "setup":
+        document.getElementById("screen-setup").style.display = "flex";
+        break;
       case "connect":
         showConnectScreen();
         break;
@@ -283,7 +845,12 @@
       case "detail":
         document.getElementById("screen-detail").style.display = "flex";
         if (!appState.selectedProposal) return;
+        setVoiceState("idle");
+        showVoiceTranscript("");
+        initConversation(appState.selectedProposal);
         renderProposalDetail(appState.selectedProposal);
+        loadAISummary(appState.selectedProposal);
+        setTimeout(() => startWakeWordListener(), 500);
         break;
     }
   }
@@ -372,6 +939,17 @@
       showError(event.data.error || "Connection failed. Please try again.");
     }
   });
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "local" && changes.connectedAddress) {
+      const newAddress = changes.connectedAddress.newValue;
+      if (newAddress && appState.screen === "connect") {
+        console.log("Wallet connected via storage change:", newAddress);
+        isConnecting = false;
+        appState.address = newAddress;
+        showConnected(newAddress);
+      }
+    }
+  });
   async function changeWallet() {
     await chrome.storage.local.remove("connectedAddress");
     isConnecting = true;
@@ -387,6 +965,29 @@
     appState.address = "";
     appState.proposals = [];
     showState("disconnected");
+  }
+  function showSetupError(msg) {
+    const el = document.getElementById("setup-error");
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+  function hideSetupError() {
+    const el = document.getElementById("setup-error");
+    el.style.display = "none";
+  }
+  async function saveApiKeys() {
+    const mistral = document.getElementById("input-mistral-key").value.trim();
+    const eleven = document.getElementById("input-elevenlabs").value.trim();
+    if (!mistral || !eleven) {
+      showSetupError("Both API keys are required.");
+      return;
+    }
+    hideSetupError();
+    await saveMistralApiKey(mistral);
+    await chrome.storage.local.set({ elevenLabsApiKey: eleven });
+    document.getElementById("input-mistral-key").value = "";
+    document.getElementById("input-elevenlabs").value = "";
+    navigate("connect");
   }
   function showProposalsLoading() {
     document.getElementById("proposals-loading").style.display = "flex";
@@ -566,17 +1167,43 @@
     header.appendChild(title);
     header.appendChild(time);
     container.appendChild(header);
-    const descLabel = document.createElement("p");
-    descLabel.className = "detail-section-label";
-    descLabel.textContent = "Description";
-    container.appendChild(descLabel);
-    const body = document.createElement("p");
-    body.className = "detail-body";
-    body.textContent = proposal.bodyDetail || "No description available.";
-    container.appendChild(body);
-    const div1 = document.createElement("div");
-    div1.className = "detail-divider";
-    container.appendChild(div1);
+    const summaryWrapper = document.createElement("div");
+    summaryWrapper.id = "detail-summary-wrapper";
+    summaryWrapper.style.cssText = "padding: 12px 16px 0;";
+    const summaryBadge = document.createElement("div");
+    summaryBadge.className = "summary-badge";
+    summaryBadge.textContent = "\u26A1 AI Summary";
+    const summaryLoading = document.createElement("div");
+    summaryLoading.id = "summary-loading";
+    summaryLoading.className = "summary-loading";
+    summaryLoading.innerHTML = '<div class="summary-spinner"></div><span>AI is analyzing this proposal...</span>';
+    const summaryError = document.createElement("div");
+    summaryError.id = "summary-error";
+    summaryError.className = "summary-error";
+    summaryError.style.display = "none";
+    summaryError.textContent = "Could not generate AI summary.";
+    const summaryNoKey = document.createElement("div");
+    summaryNoKey.id = "summary-no-key";
+    summaryNoKey.className = "summary-error";
+    summaryNoKey.style.display = "none";
+    summaryNoKey.textContent = "Please add your Mistral API key in settings.";
+    const summaryFallback = document.createElement("div");
+    summaryFallback.id = "summary-fallback";
+    summaryFallback.className = "summary-fallback";
+    summaryFallback.style.display = "none";
+    const summaryContent = document.createElement("div");
+    summaryContent.id = "detail-summary";
+    summaryContent.style.display = "none";
+    summaryWrapper.appendChild(summaryBadge);
+    summaryWrapper.appendChild(summaryLoading);
+    summaryWrapper.appendChild(summaryError);
+    summaryWrapper.appendChild(summaryNoKey);
+    summaryWrapper.appendChild(summaryFallback);
+    summaryWrapper.appendChild(summaryContent);
+    container.appendChild(summaryWrapper);
+    const summaryDivider = document.createElement("hr");
+    summaryDivider.className = "summary-divider";
+    container.appendChild(summaryDivider);
     const votesLabel = document.createElement("p");
     votesLabel.className = "detail-section-label";
     votesLabel.textContent = "Current Votes";
@@ -682,19 +1309,26 @@
     container.appendChild(voteLabel);
     const voteButtons = document.createElement("div");
     voteButtons.className = "vote-buttons";
-    proposal.choices.forEach((choice) => {
+    const isActive = proposal.state === "active";
+    proposal.choices.forEach((choice, idx) => {
       if (!choice) return;
       const btn = document.createElement("button");
       btn.className = "vote-btn";
       btn.textContent = choice;
-      btn.disabled = true;
+      btn.disabled = !isActive;
+      if (isActive) {
+        btn.addEventListener(
+          "click",
+          () => handleVoteClick(proposal, idx + 1, voteButtons, voteStatus)
+        );
+      }
       voteButtons.appendChild(btn);
     });
     container.appendChild(voteButtons);
-    const note = document.createElement("p");
-    note.className = "vote-note";
-    note.textContent = "Voting coming in next update";
-    container.appendChild(note);
+    const voteStatus = document.createElement("p");
+    voteStatus.className = "vote-status";
+    voteStatus.textContent = isActive ? "" : "Voting is closed for this proposal";
+    container.appendChild(voteStatus);
     const readBtn = document.createElement("a");
     readBtn.className = "read-full-btn";
     readBtn.textContent = "\u2197 Read Full Proposal";
@@ -767,7 +1401,7 @@
       showProposalsError("You are offline. Please check your connection and try again.");
       return;
     }
-    if (!forceReload && lastFetchTime && Date.now() - lastFetchTime < CACHE_TTL_MS) {
+    if (!forceReload && lastFetchTime && Date.now() - lastFetchTime < CACHE_TTL_MS2) {
       if (appState.proposals.length > 0) {
         renderProposalsList(appState.proposals);
         return;
@@ -799,7 +1433,7 @@
         if (appState.screen === "proposals") {
           loadProposalsByTab(true);
         }
-      }, CACHE_TTL_MS);
+      }, CACHE_TTL_MS2);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load proposals";
       showProposalsError(msg);
@@ -807,6 +1441,296 @@
       isLoadingProposals = false;
       reloadBtn?.classList.remove("loading");
     }
+  }
+  var MIN_LOADER_MS = 300;
+  function resetSummarySection() {
+    document.getElementById("summary-loading").style.display = "flex";
+    document.getElementById("summary-error").style.display = "none";
+    document.getElementById("summary-no-key").style.display = "none";
+    document.getElementById("summary-fallback").style.display = "none";
+    document.getElementById("detail-summary").style.display = "none";
+  }
+  function showSummaryNoKey() {
+    document.getElementById("summary-loading").style.display = "none";
+    document.getElementById("summary-no-key").style.display = "block";
+  }
+  function showSummaryError(fallbackText) {
+    document.getElementById("summary-loading").style.display = "none";
+    document.getElementById("summary-error").style.display = "block";
+    if (fallbackText) {
+      const el = document.getElementById("summary-fallback");
+      el.textContent = fallbackText;
+      el.style.display = "block";
+    }
+  }
+  async function holdMinLoader(loadStart) {
+    const elapsed = Date.now() - loadStart;
+    if (elapsed < MIN_LOADER_MS) {
+      await new Promise((r) => setTimeout(r, MIN_LOADER_MS - elapsed));
+    }
+  }
+  async function loadAISummary(proposal) {
+    resetSummarySection();
+    const loadStart = Date.now();
+    const apiKey = await getMistralApiKey();
+    if (!apiKey) {
+      await holdMinLoader(loadStart);
+      showSummaryNoKey();
+      return;
+    }
+    let summary = await getCachedSummary(proposal.id);
+    if (!summary) {
+      try {
+        summary = await generateSummary(proposal.bodyFull, apiKey);
+        await cacheSummary(proposal.id, summary);
+      } catch (err) {
+        console.error("AI Summary generation failed:", err);
+        await holdMinLoader(loadStart);
+        showSummaryError(getFallbackSummary(proposal.bodyFull));
+        return;
+      }
+    }
+    await holdMinLoader(loadStart);
+    const sections = parseSummary(summary);
+    const container = document.getElementById("detail-summary");
+    renderSummary(sections, container);
+    document.getElementById("summary-loading").style.display = "none";
+    container.style.display = "block";
+  }
+  function setVoteButtons(container, disabled) {
+    container.querySelectorAll(".vote-btn").forEach((btn) => {
+      btn.disabled = disabled;
+    });
+  }
+  async function handleVoteClick(proposal, choiceIndex, buttonsContainer, statusEl) {
+    const result = await chrome.storage.local.get("connectedAddress");
+    const address = result.connectedAddress;
+    if (!address) {
+      statusEl.textContent = "Connect wallet first";
+      statusEl.className = "vote-status error";
+      return;
+    }
+    const choiceName = proposal.choices[choiceIndex - 1] || `Choice ${choiceIndex}`;
+    const confirmed = window.confirm(`Vote "${choiceName}" on:
+"${proposal.title}"?`);
+    if (!confirmed) return;
+    setVoteButtons(buttonsContainer, true);
+    statusEl.textContent = "Submitting vote...";
+    statusEl.className = "vote-status loading";
+    try {
+      await castVote(proposal.id, proposal.spaceId, choiceIndex, address);
+      statusEl.textContent = "Vote submitted successfully \u2705";
+      statusEl.className = "vote-status success";
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Vote failed. Please try again.";
+      if (msg.includes("already voted")) {
+        statusEl.textContent = "You have already voted on this proposal";
+        statusEl.className = "vote-status error";
+      } else if (msg === "Signature rejected") {
+        statusEl.textContent = "Signature rejected";
+        statusEl.className = "vote-status error";
+        setVoteButtons(buttonsContainer, false);
+      } else {
+        statusEl.textContent = "Vote failed. Please try again.";
+        statusEl.className = "vote-status error";
+        setVoteButtons(buttonsContainer, false);
+      }
+    }
+  }
+  var voiceState = "idle";
+  var stopRecording = null;
+  var wakeWordRecognition = null;
+  var WAKE_WORD = "propo";
+  function startWakeWordListener() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    if (wakeWordRecognition) return;
+    wakeWordRecognition = new SpeechRecognition();
+    wakeWordRecognition.continuous = true;
+    wakeWordRecognition.interimResults = true;
+    wakeWordRecognition.lang = "en-US";
+    wakeWordRecognition.onresult = (event) => {
+      if (voiceState !== "idle") return;
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const text = event.results[i][0].transcript.toLowerCase().trim();
+        if (text.includes(WAKE_WORD)) {
+          stopWakeWordListener();
+          handleVoiceButtonClick();
+          break;
+        }
+      }
+    };
+    wakeWordRecognition.onend = () => {
+      if (appState.screen === "detail" && voiceState === "idle" && wakeWordRecognition) {
+        try {
+          wakeWordRecognition.start();
+        } catch {
+        }
+      }
+    };
+    wakeWordRecognition.onerror = (e) => {
+      if (e.error === "no-speech" || e.error === "aborted") return;
+      wakeWordRecognition = null;
+    };
+    try {
+      wakeWordRecognition.start();
+      const statusEl = document.getElementById("voice-status");
+      if (statusEl && voiceState === "idle") {
+        statusEl.textContent = 'Say "Propo" or tap to ask AI';
+      }
+    } catch {
+      wakeWordRecognition = null;
+    }
+  }
+  function stopWakeWordListener() {
+    if (wakeWordRecognition) {
+      try {
+        wakeWordRecognition.stop();
+      } catch {
+      }
+      wakeWordRecognition = null;
+    }
+  }
+  function playChime(type) {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      if (type === "open") {
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(1e-3, ctx.currentTime + 0.35);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.35);
+      } else {
+        osc.frequency.setValueAtTime(660, ctx.currentTime);
+        osc.frequency.setValueAtTime(440, ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(1e-3, ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.3);
+      }
+      osc.onended = () => ctx.close();
+    } catch {
+    }
+  }
+  function setVoiceState(state) {
+    voiceState = state;
+    const btn = document.getElementById("btn-voice");
+    const statusEl = document.getElementById("voice-status");
+    if (!btn || !statusEl) return;
+    btn.disabled = false;
+    btn.className = "";
+    statusEl.className = "";
+    switch (state) {
+      case "idle":
+        btn.textContent = "\u{1F399}\uFE0F Ask AI";
+        statusEl.textContent = 'Say "Propo" or tap to ask AI';
+        setTimeout(() => startWakeWordListener(), 300);
+        break;
+      case "recording":
+        btn.textContent = "\u23F9 Stop";
+        btn.classList.add("recording");
+        statusEl.textContent = "\u{1F534} Listening...";
+        statusEl.classList.add("status-recording");
+        break;
+      case "thinking":
+        btn.textContent = "\u23F3 Thinking...";
+        btn.disabled = true;
+        statusEl.textContent = "AI is thinking...";
+        statusEl.classList.add("status-thinking");
+        break;
+      case "speaking":
+        btn.textContent = "\u23F9 Stop";
+        btn.classList.add("speaking");
+        statusEl.textContent = "\u{1F50A} Speaking...";
+        statusEl.classList.add("status-speaking");
+        break;
+    }
+  }
+  function showVoiceTranscript(text) {
+    const el = document.getElementById("voice-transcript");
+    if (!el) return;
+    el.textContent = text;
+    el.style.display = text ? "block" : "none";
+  }
+  function showVoiceError(msg) {
+    const statusEl = document.getElementById("voice-status");
+    if (statusEl) {
+      statusEl.textContent = msg;
+      statusEl.className = "status-error";
+    }
+    stopRecording = null;
+    setVoiceState("idle");
+  }
+  async function handleVoiceButtonClick() {
+    if (voiceState === "speaking") {
+      stopSpeaking();
+      setVoiceState("idle");
+      return;
+    }
+    if (voiceState === "recording") {
+      stopRecording?.();
+      return;
+    }
+    if (voiceState !== "idle") return;
+    const proposal = appState.selectedProposal;
+    if (!proposal) return;
+    const elevenKey = await getElevenLabsApiKey();
+    const mistralKey = await getMistralApiKey();
+    if (!elevenKey || !mistralKey) {
+      showVoiceError("API keys missing \u2014 check setup.");
+      return;
+    }
+    setVoiceState("recording");
+    showVoiceTranscript("");
+    stopWakeWordListener();
+    playChime("open");
+    const { promise, stop } = recordWithSpeechAPI(
+      (interim, _isFinal) => {
+        if (interim) showVoiceTranscript(interim);
+      },
+      2e3
+    );
+    stopRecording = stop;
+    let transcript;
+    try {
+      transcript = await promise;
+    } catch (err) {
+      console.error("[Voice] Recording failed:", err);
+      showVoiceError(err?.message || "Microphone access denied or unavailable.");
+      return;
+    } finally {
+      stopRecording = null;
+      playChime("close");
+    }
+    if (!transcript) {
+      showVoiceError("No speech detected. Try again.");
+      setVoiceState("idle");
+      return;
+    }
+    showVoiceTranscript(`"${transcript}"`);
+    setVoiceState("thinking");
+    let answer;
+    try {
+      answer = await askAboutProposal(transcript, mistralKey);
+    } catch (err) {
+      console.error("[Voice] Mistral failed:", err);
+      showVoiceError("AI response failed. Try again.");
+      return;
+    }
+    setVoiceState("speaking");
+    try {
+      await speakTextStream(answer, elevenKey);
+    } catch (err) {
+      console.error("[Voice] TTS failed:", err);
+      showVoiceError("Could not play audio response.");
+      return;
+    }
+    setVoiceState("idle");
   }
   async function initialize() {
     disconnectedState = document.getElementById("disconnected-state");
@@ -819,6 +1743,13 @@
     changeWalletBtn = document.getElementById("change-wallet-btn");
     walletAddressEl = document.getElementById("wallet-address");
     errorTextEl = document.getElementById("error-text");
+    document.getElementById("btn-save-keys").addEventListener("click", saveApiKeys);
+    document.getElementById("input-elevenlabs").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") saveApiKeys();
+    });
+    document.getElementById("input-mistral-key").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") saveApiKeys();
+    });
     connectBtn.addEventListener("click", connectWallet);
     document.getElementById("retry-btn").addEventListener("click", connectWallet);
     changeWalletBtn.addEventListener("click", changeWallet);
@@ -837,6 +1768,9 @@
       navigate("connected");
     });
     document.getElementById("btn-back-detail").addEventListener("click", () => {
+      stopSpeaking();
+      stopWakeWordListener();
+      resetConversation();
       navigate("proposals");
       if (appState.proposals.length > 0) {
         renderProposalsList(appState.proposals);
@@ -847,7 +1781,14 @@
       loadProposalsByTab(true);
     });
     document.getElementById("btn-retry").addEventListener("click", loadProposalsByTab);
+    document.getElementById("btn-voice").addEventListener("click", handleVoiceButtonClick);
     bindTabEvents();
+    const keysData = await chrome.storage.local.get(["mistralApiKey", "elevenLabsApiKey"]);
+    if (!keysData.mistralApiKey || !keysData.elevenLabsApiKey) {
+      navigate("setup");
+      updateOfflineBanner();
+      return;
+    }
     const result = await chrome.storage.local.get("connectedAddress");
     if (result.connectedAddress) {
       appState.address = result.connectedAddress;

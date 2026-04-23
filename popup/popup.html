@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Snapshot Voter</title>
+  <title>GovernCrypto</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -13,8 +13,8 @@
   </div>
   <div class="container">
     <div class="header">
-      <h1>Snapshot Voter</h1>
-      <p>Connect your wallet to participate in governance</p>
+      <h1>GovernCrypto</h1>
+      <p>DAOs need voters. Voters need this.</p>
     </div>
     
     <div class="content">
@@ -66,6 +66,31 @@
   
   <script src="../popup.js"></script>
 
+    <!-- Screen 0: Setup — Feature 3 -->
+    <div id="screen-setup" class="screen" style="display:none;">
+      <div class="setup-container">
+        <div class="setup-logo">🏛️</div>
+        <h2 class="setup-title">Setup GovernCrypto</h2>
+        <p class="setup-subtitle">Enter your API keys to enable AI and voice features</p>
+
+        <div class="setup-field">
+          <label class="setup-label" for="input-mistral-key">Mistral API Key</label>
+          <input id="input-mistral-key" class="setup-input" type="password" placeholder="Enter your Mistral API key" autocomplete="off" />
+        </div>
+
+        <div class="setup-field">
+          <label class="setup-label" for="input-elevenlabs">ElevenLabs API Key</label>
+          <input id="input-elevenlabs" class="setup-input" type="password" placeholder="Enter your ElevenLabs API key" autocomplete="off" />
+        </div>
+
+        <p id="setup-error" class="setup-error" style="display:none;"></p>
+
+        <button id="btn-save-keys" class="setup-save-btn">Save &amp; Continue</button>
+
+        <p class="setup-hint">Keys are stored locally and never sent to any server.</p>
+      </div>
+    </div>
+
     <!-- Screen 3: Proposals List — Feature 2 -->
     <div id="screen-proposals" class="screen" style="display:none;">
       <div class="screen-header">
@@ -107,7 +132,19 @@
         <button id="btn-back-detail" class="btn-back">← Back</button>
         <span class="screen-title">Proposal Detail</span>
       </div>
+
+      <!-- AI Summary section injected dynamically after title in detail-content -->
+
+      <hr class="summary-divider" style="display:none;" id="summary-divider-top" />
+
       <div id="detail-content"></div>
+
+      <!-- Feature 4: Voice AI Assistant -->
+      <div id="voice-section">
+        <div id="voice-status">Tap to ask AI about this proposal</div>
+        <button id="btn-voice" aria-label="Ask AI by voice">🎙️ Ask AI</button>
+        <div id="voice-transcript" style="display:none;"></div>
+      </div>
     </div>
 
 </body>

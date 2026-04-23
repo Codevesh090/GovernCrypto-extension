@@ -15,6 +15,7 @@ export interface DisplayProposal {
   spaceId: string;
   start: number;
   end: number;
+  bodyFull: string; // full untruncated body for AI
 }
 
 export function stripMarkdown(text: string): string {
@@ -82,6 +83,7 @@ export function transformProposal(raw: RawProposal | null | undefined): DisplayP
     spaceName: raw.space?.name || raw.space?.id || 'Unknown DAO',
     spaceId: raw.space?.id || '',
     start: raw.start || 0,
-    end: raw.end || 0
+    end: raw.end || 0,
+    bodyFull: stripMarkdown(raw.body || '').slice(0, 3000) // up to 3000 chars for AI summary
   };
 }

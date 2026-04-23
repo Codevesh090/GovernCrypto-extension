@@ -1,13 +1,29 @@
 {
   "manifest_version": 3,
-  "name": "Snapshot Governance Voting Extension",
+  "name": "GovernCrypto",
   "version": "1.0.0",
-  "description": "Connect your wallet to participate in Snapshot governance voting",
-  "permissions": ["storage"],
+  "description": "DAOs need voters. Voters need this. Turn DAO governance into a conversation — understand, ask, and vote instantly.",
+  "permissions": ["storage", "sidePanel"],
+  "host_permissions": [
+    "https://api.mistral.ai/*",
+    "https://api.elevenlabs.io/*",
+    "https://seq.snapshot.org/*"
+  ],
   "action": {
-    "default_popup": "popup/popup.html",
-    "default_title": "Snapshot Voter"
+    "default_title": "GovernCrypto"
   },
+  "side_panel": {
+    "default_path": "popup/popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["recorder/recorder.html", "recorder/recorder.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   }
