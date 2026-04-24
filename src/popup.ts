@@ -9,6 +9,12 @@ import { recordWithSpeechAPI } from './voiceStt.js';
 import { speakTextStream, stopSpeaking } from './voiceTts.js';
 import { askAboutProposal, resetConversation, initConversation } from './voiceConversation.js';
 import { castVote } from './snapshotVote.js';
+import { SUPPORTED_LANGUAGES, getLanguagePreference, saveLanguagePreference } from './languageStorage.js';
+import { detectElevenLabsCapabilities, saveCapabilities, getCapabilities, getTierDisplayName } from './elevenLabsCapabilities.js';
+import { getVoiceSettings, saveVoiceSettings, fetchAvailableVoices } from './voiceSettings.js';
+import { playIfEnabled } from './soundEffects.js';
+import { detectLanguage } from './languageDetection.js';
+import { THEMES, getTheme, saveTheme, applyTheme, type ThemeName } from './themeStorage.js';
 
 console.log('Snapshot Governance Extension - Popup loaded');
 
@@ -69,18 +75,23 @@ const appState: {
   selectedProposal: DisplayProposal | null;
   address: string;
   activeTab: string;
+  proposalsSkip: number;
+  hasMoreProposals: boolean;
 } = {
   screen: 'connect',
   proposals: [],
   selectedProposal: null,
   address: '',
-  activeTab: 'all'
+  activeTab: 'all',
+  proposalsSkip: 0,
+  hasMoreProposals: true
 };
 
 let isLoadingProposals = false;
 
 // Cache timestamp for hourly auto-reload
 let lastFetchTime = 0;
+let lastFetchedTab = ''; // track which tab was last fetched
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 let autoReloadTimer: number | undefined;
 
@@ -186,10 +197,9 @@ function connectWallet() {
   isConnecting = true;
   showState('connecting');
 
-  const features = 'width=420,height=640,left=200,top=100';
-  const popup = window.open(HOSTED_PAGE_URL, 'walletConnect', features);
+  const tab = window.open(HOSTED_PAGE_URL, '_blank');
 
-  if (!popup) {
+  if (!tab) {
     showError('Popup was blocked. Please allow popups for this extension.');
     return;
   }
@@ -234,11 +244,14 @@ window.addEventListener('message', async (event) => {
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'local' && changes.connectedAddress) {
     const newAddress = changes.connectedAddress.newValue;
-    if (newAddress && appState.screen === 'connect') {
+    if (newAddress) {
       console.log('Wallet connected via storage change:', newAddress);
       isConnecting = false;
       appState.address = newAddress;
-      showConnected(newAddress);
+      // Navigate to connected screen regardless of current screen
+      if (appState.screen === 'connect') {
+        showConnected(newAddress);
+      }
     }
   }
 });
@@ -248,10 +261,9 @@ async function changeWallet() {
   isConnecting = true;
   showState('connecting');
 
-  const features = 'width=420,height=640,left=200,top=100';
-  const popup = window.open(HOSTED_PAGE_URL, 'walletConnect', features);
+  const tab = window.open(HOSTED_PAGE_URL, '_blank');
 
-  if (!popup) {
+  if (!tab) {
     showError('Popup was blocked. Please allow popups for this extension.');
   }
 }
@@ -284,20 +296,70 @@ async function saveApiKeys(): Promise<void> {
 
   if (!mistral || !eleven) {
     showSetupError('Both API keys are required.');
+    await playIfEnabled('error');
     return;
   }
 
   hideSetupError();
+  
+  try {
+    // Store keys — never log them
+    await saveMistralApiKey(mistral);
+    await chrome.storage.local.set({ elevenLabsApiKey: eleven });
+    
+    // Set optimistic capabilities - we'll check features on actual use
+    const capabilities = await detectElevenLabsCapabilities(eleven);
+    await saveCapabilities(capabilities);
+    
+    // Show success message
+    const errorEl = document.getElementById('setup-error')!;
+    errorEl.style.display = 'block';
+    errorEl.style.background = 'rgba(0,255,136,0.08)';
+    errorEl.style.borderColor = 'rgba(0,255,136,0.3)';
+    errorEl.style.color = '#00ff88';
+    errorEl.innerHTML = `
+      <div style="font-weight: 700; margin-bottom: 6px;">✓ API Keys Saved</div>
+      <div style="font-size: 10px;">Features will be enabled based on your API key permissions</div>
+    `;
+    
+    // Play success sound
+    await playIfEnabled('success');
+    
+    // Wait a moment then navigate
+    setTimeout(() => {
+      // Clear inputs after saving
+      (document.getElementById('input-mistral-key') as HTMLInputElement).value = '';
+      (document.getElementById('input-elevenlabs') as HTMLInputElement).value = '';
+      navigate('connect');
+    }, 1500);
+    
+  } catch (error) {
+    console.error('[Setup] Error saving keys:', error);
+    showSetupError('Failed to save API keys. Please try again.');
+    await playIfEnabled('error');
+  }
+}
 
-  // Store keys — never log them
-  await saveMistralApiKey(mistral);
-  await chrome.storage.local.set({ elevenLabsApiKey: eleven });
-
-  // Clear inputs after saving
-  (document.getElementById('input-mistral-key') as HTMLInputElement).value = '';
-  (document.getElementById('input-elevenlabs') as HTMLInputElement).value = '';
-
-  navigate('connect');
+function showCapabilityInfo(capabilities: any): void {
+  const errorEl = document.getElementById('setup-error')!;
+  errorEl.style.display = 'block';
+  errorEl.style.background = 'rgba(0,255,136,0.08)';
+  errorEl.style.borderColor = 'rgba(0,255,136,0.3)';
+  errorEl.style.color = '#00ff88';
+  
+  const tierName = getTierDisplayName(capabilities.tier);
+  const features = [];
+  
+  if (capabilities.hasVoiceLibrary) features.push('✓ Voice Library');
+  if (capabilities.hasMultilingual) features.push('✓ Multilingual');
+  if (capabilities.hasStreaming) features.push('✓ Streaming Audio');
+  if (capabilities.hasVoiceCloning) features.push('✓ Voice Cloning');
+  
+  errorEl.innerHTML = `
+    <div style="font-weight: 700; margin-bottom: 6px;">✓ API Keys Validated</div>
+    <div style="font-size: 10px; margin-bottom: 4px;">Plan: ${tierName}</div>
+    <div style="font-size: 9px; line-height: 1.4;">${features.join(' • ')}</div>
+  `;
 }
 
 function showProposalsLoading(): void {
@@ -342,7 +404,10 @@ function renderProposalsList(proposals: DisplayProposal[]): void {
   for (const p of safeProposals) {
     const card = document.createElement('div');
     card.className = 'proposal-card';
-    card.onclick = () => navigate('detail', { proposal: p });
+    card.onclick = async () => {
+      await playIfEnabled('click');
+      navigate('detail', { proposal: p });
+    };
 
     // Header row: space logo + name + badge
     const cardHeader = document.createElement('div');
@@ -374,38 +439,52 @@ function renderProposalsList(proposals: DisplayProposal[]): void {
     card.appendChild(cardHeader);
     card.appendChild(title);
 
-    // Top-2 choices (only when votes exist)
+    // All choices with votes
     if (p.scores_total > 0 && p.percentages.length > 0) {
       const pairs = p.choices
-        .map((c, i) => ({ choice: c, percent: p.percentages[i] || 0, score: p.scores[i] || 0 }))
-        .filter((_, i) => p.choices[i] !== undefined && p.percentages[i] !== undefined);
+        .map((c, i) => ({ choice: c, percent: p.percentages[i] || 0, score: p.scores[i] || 0, origIdx: i }))
+        .filter(item => item.choice);
 
-      pairs.sort((a, b) => b.percent - a.percent);
-      const topTwo = pairs.slice(0, 2);
-      const colors = ['green', 'red'];
+      // Assign colors: highest % = green, second = red, rest = grey
+      const sorted = [...pairs].sort((a, b) => b.percent - a.percent);
+      const colorMap = new Map<number, string>();
+      sorted.forEach((item, rank) => {
+        colorMap.set(item.origIdx, rank === 0 ? 'green' : rank === 1 ? 'red' : 'grey');
+      });
 
-      topTwo.forEach(({ choice, percent, score }, idx) => {
+      pairs.forEach(({ choice, percent, score, origIdx }) => {
+        const color = colorMap.get(origIdx) || 'grey';
         const row = document.createElement('div');
         row.className = 'choice-row';
 
         const label = document.createElement('span');
-        label.className = `choice-label color-${colors[idx]}`;
-        label.textContent = `${choice} ${percent}%`;
+        label.className = `choice-label color-${color}`;
+        label.textContent = choice;
+
+        const right = document.createElement('span');
+        right.className = 'choice-right';
+
+        const pctSpan = document.createElement('span');
+        pctSpan.className = `choice-pct color-${color}`;
+        pctSpan.textContent = `${percent}%`;
 
         const vpSpan = document.createElement('span');
         vpSpan.className = 'vp-amount';
         vpSpan.textContent = formatVotingPower(score);
 
+        right.appendChild(pctSpan);
+        right.appendChild(vpSpan);
+
         const bar = document.createElement('div');
         bar.className = 'progress-bar';
         const fill = document.createElement('div');
-        fill.className = `progress-fill fill-${colors[idx]}`;
+        fill.className = `progress-fill fill-${color}`;
         fill.style.width = `${percent}%`;
         bar.appendChild(fill);
 
         row.appendChild(label);
         row.appendChild(bar);
-        row.appendChild(vpSpan);
+        row.appendChild(right);
         card.appendChild(row);
       });
     } else {
@@ -546,9 +625,42 @@ function renderProposalDetail(proposal: DisplayProposal): void {
   summaryWrapper.id = 'detail-summary-wrapper';
   summaryWrapper.style.cssText = 'padding: 12px 16px 0;';
 
+  // Summary header with badge and language selector
+  const summaryHeader = document.createElement('div');
+  summaryHeader.className = 'summary-header';
+
   const summaryBadge = document.createElement('div');
   summaryBadge.className = 'summary-badge';
-  summaryBadge.textContent = '⚡ AI Summary';
+  summaryBadge.textContent = '⚡ AI SUMMARY';
+
+  // Language selector
+  const languageSelector = document.createElement('div');
+  languageSelector.className = 'language-selector';
+  
+  const languageBtn = document.createElement('button');
+  languageBtn.className = 'language-btn';
+  languageBtn.id = 'language-btn';
+  languageBtn.innerHTML = '<span id="current-lang-flag">🇬🇧</span> <span id="current-lang">EN</span> ▾';
+  
+  const languageDropdown = document.createElement('div');
+  languageDropdown.className = 'language-dropdown';
+  languageDropdown.id = 'language-dropdown';
+  
+  // Populate language options
+  SUPPORTED_LANGUAGES.forEach(lang => {
+    const option = document.createElement('div');
+    option.className = 'language-option';
+    option.dataset.code = lang.code;
+    option.dataset.flag = lang.flag;
+    option.innerHTML = `<span class="language-flag">${lang.flag}</span><span>${lang.name}</span>`;
+    languageDropdown.appendChild(option);
+  });
+  
+  languageSelector.appendChild(languageBtn);
+  languageSelector.appendChild(languageDropdown);
+  
+  summaryHeader.appendChild(summaryBadge);
+  summaryHeader.appendChild(languageSelector);
 
   const summaryLoading = document.createElement('div');
   summaryLoading.id = 'summary-loading';
@@ -576,7 +688,7 @@ function renderProposalDetail(proposal: DisplayProposal): void {
   summaryContent.id = 'detail-summary';
   summaryContent.style.display = 'none';
 
-  summaryWrapper.appendChild(summaryBadge);
+  summaryWrapper.appendChild(summaryHeader);
   summaryWrapper.appendChild(summaryLoading);
   summaryWrapper.appendChild(summaryError);
   summaryWrapper.appendChild(summaryNoKey);
@@ -597,17 +709,18 @@ function renderProposalDetail(proposal: DisplayProposal): void {
   if (proposal.scores_total > 0 && proposal.percentages.length > 0) {
     const pairs = proposal.choices
       .map((c, i) => ({ choice: c, percent: proposal.percentages[i] || 0, score: proposal.scores[i] || 0, idx: i }))
-      .filter(item => proposal.choices[item.idx] !== undefined && proposal.percentages[item.idx] !== undefined);
+      .filter(item => item.choice);
 
+    // Rank-based coloring: highest % = green, second = red, rest = grey
     const sorted = [...pairs].sort((a, b) => b.percent - a.percent);
-    const rankColors = ['green', 'red'];
-    const colorByChoice = new Map<string, string>();
+    const colorMap = new Map<number, string>();
     sorted.forEach((item, rank) => {
-      colorByChoice.set(item.choice, rankColors[rank] || 'grey');
+      colorMap.set(item.idx, rank === 0 ? 'green' : rank === 1 ? 'red' : 'grey');
     });
 
-    pairs.forEach(({ choice, percent, score }) => {
-      const color = colorByChoice.get(choice) || 'grey';
+    pairs.forEach(({ choice, percent, score, idx }) => {
+      const color = colorMap.get(idx) || 'grey';
+
       const row = document.createElement('div');
       row.className = 'detail-choice-row';
 
@@ -622,6 +735,9 @@ function renderProposalDetail(proposal: DisplayProposal): void {
       fill.style.width = `${percent}%`;
       bar.appendChild(fill);
 
+      const right = document.createElement('span');
+      right.className = 'detail-choice-right';
+
       const pct = document.createElement('span');
       pct.className = `detail-choice-pct color-${color}`;
       pct.textContent = `${percent}%`;
@@ -630,10 +746,12 @@ function renderProposalDetail(proposal: DisplayProposal): void {
       vp.className = 'vp-amount';
       vp.textContent = formatVotingPower(score);
 
+      right.appendChild(pct);
+      right.appendChild(vp);
+
       row.appendChild(label);
       row.appendChild(bar);
-      row.appendChild(pct);
-      row.appendChild(vp);
+      row.appendChild(right);
       container.appendChild(row);
     });
   } else {
@@ -789,13 +907,20 @@ function bindTabEvents(): void {
     }
 
     tabEl.addEventListener('click', async (e) => {
+      // Read dataset BEFORE any await — currentTarget becomes null after async
       const tab = (e.currentTarget as HTMLElement).dataset.tab!;
+      await playIfEnabled('click');
+      console.log('[Tab Click] tab:', tab, '| currentTab:', appState.activeTab);
       if (appState.activeTab === tab) return;
       appState.activeTab = tab;
       appState.proposals = [];
+      appState.proposalsSkip = 0;
+      appState.hasMoreProposals = true;
       lastFetchTime = 0;
+      lastFetchedTab = '';
       updateActiveTabUI();
       await loadProposalsByTab();
+      setupInfiniteScroll();
     });
   });
 }
@@ -842,7 +967,10 @@ function updateLastUpdatedLabel(): void {
 // ============================================
 
 async function loadProposalsByTab(forceReload = false): Promise<void> {
-  if (isLoadingProposals) return;
+  if (isLoadingProposals) {
+    console.log('[Load Proposals] Already loading, skipping...');
+    return;
+  }
 
   // Offline guard
   if (!navigator.onLine) {
@@ -850,8 +978,8 @@ async function loadProposalsByTab(forceReload = false): Promise<void> {
     return;
   }
 
-  // Use cache if within TTL and not forced
-  if (!forceReload && lastFetchTime && (Date.now() - lastFetchTime) < CACHE_TTL_MS) {
+  // Use cache if within TTL, not forced, initial load, AND same tab
+  if (!forceReload && appState.proposalsSkip === 0 && lastFetchTime && lastFetchedTab === appState.activeTab && (Date.now() - lastFetchTime) < CACHE_TTL_MS) {
     if (appState.proposals.length > 0) {
       renderProposalsList(appState.proposals);
       return;
@@ -859,37 +987,69 @@ async function loadProposalsByTab(forceReload = false): Promise<void> {
   }
 
   isLoadingProposals = true;
-  showProposalsLoading();
+  
+  // Show appropriate loading indicator
+  if (appState.proposalsSkip === 0) {
+    // Initial load - show main loading screen
+    showProposalsLoading();
+  } else {
+    // Pagination - show "loading more" at bottom
+    const loadingMore = document.getElementById('proposals-loading-more');
+    if (loadingMore) loadingMore.style.display = 'flex';
+  }
 
   // Show loading spinner inside reload button
   const reloadBtn = document.getElementById('btn-reload-proposals');
   reloadBtn?.classList.add('loading');
 
+  console.log('[Load Proposals] Fetching proposals...', {
+    tab: appState.activeTab,
+    skip: appState.proposalsSkip,
+    currentCount: appState.proposals.length
+  });
+
   try {
     let raw;
     if (appState.activeTab === 'all') {
-      raw = await fetchAllActiveProposals();
+      raw = await fetchAllActiveProposals(appState.proposalsSkip);
     } else {
-      raw = await fetchDAOProposals(appState.activeTab);
+      raw = await fetchDAOProposals(appState.activeTab, appState.proposalsSkip);
     }
 
-    console.log('DAO:', appState.activeTab, '| Proposals fetched:', raw.length);
+    console.log('[Load Proposals] Fetched:', raw.length, 'proposals');
 
     const proposals = raw.map(transformProposal).filter(Boolean) as DisplayProposal[];
-    appState.proposals = proposals;
+    
+    // Check if there are more proposals (if we got less than expected, no more)
+    const expectedBatchSize = 40;
+    appState.hasMoreProposals = proposals.length >= expectedBatchSize;
+    
+    console.log('[Load Proposals] Has more proposals:', appState.hasMoreProposals);
+    
+    // Append to existing proposals if loading more, otherwise replace
+    if (appState.proposalsSkip > 0) {
+      appState.proposals = [...appState.proposals, ...proposals];
+      console.log('[Load Proposals] Appended. Total now:', appState.proposals.length);
+    } else {
+      appState.proposals = proposals;
+      console.log('[Load Proposals] Replaced. Total now:', appState.proposals.length);
+    }
+    
     lastFetchTime = Date.now();
+    lastFetchedTab = appState.activeTab;
     updateLastUpdatedLabel();
 
-    if (proposals.length === 0) {
+    if (appState.proposals.length === 0) {
       showProposalsEmpty();
     } else {
-      renderProposalsList(proposals);
+      renderProposalsList(appState.proposals);
     }
 
     // Schedule next auto-reload
     if (autoReloadTimer) clearTimeout(autoReloadTimer);
     autoReloadTimer = window.setTimeout(() => {
       if (appState.screen === 'proposals') {
+        appState.proposalsSkip = 0;
         loadProposalsByTab(true);
       }
     }, CACHE_TTL_MS);
@@ -897,9 +1057,14 @@ async function loadProposalsByTab(forceReload = false): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to load proposals';
     showProposalsError(msg);
+    console.error('[Load Proposals] Error:', err);
   } finally {
     isLoadingProposals = false;
     reloadBtn?.classList.remove('loading');
+    
+    // Hide "loading more" indicator
+    const loadingMore = document.getElementById('proposals-loading-more');
+    if (loadingMore) loadingMore.style.display = 'none';
   }
 }
 
@@ -939,9 +1104,25 @@ async function holdMinLoader(loadStart: number): Promise<void> {
   }
 }
 
-async function loadAISummary(proposal: DisplayProposal): Promise<void> {
+async function loadAISummary(proposal: DisplayProposal, languageCode?: string): Promise<void> {
   resetSummarySection();
   const loadStart = Date.now();
+
+  // Get language preference
+  const language = languageCode || await getLanguagePreference();
+  
+  // Update language button display
+  const currentLangEl = document.getElementById('current-lang');
+  const currentFlagEl = document.getElementById('current-lang-flag');
+  if (currentLangEl) {
+    currentLangEl.textContent = language.toUpperCase();
+  }
+  if (currentFlagEl) {
+    const selectedLang = SUPPORTED_LANGUAGES.find(l => l.code === language);
+    if (selectedLang) {
+      currentFlagEl.textContent = selectedLang.flag;
+    }
+  }
 
   // Check Mistral API key
   const apiKey = await getMistralApiKey();
@@ -952,13 +1133,13 @@ async function loadAISummary(proposal: DisplayProposal): Promise<void> {
     return;
   }
 
-  // Check cache
-  let summary = await getCachedSummary(proposal.id);
+  // Check cache with language
+  let summary = await getCachedSummary(proposal.id, language);
 
   if (!summary) {
     try {
-      summary = await generateSummary(proposal.bodyFull, apiKey);
-      await cacheSummary(proposal.id, summary);
+      summary = await generateSummary(proposal.bodyFull, apiKey, language);
+      await cacheSummary(proposal.id, summary, language);
     } catch (err) {
       console.error('AI Summary generation failed:', err);
       await holdMinLoader(loadStart);
@@ -999,38 +1180,45 @@ async function handleVoteClick(
   if (!address) {
     statusEl.textContent = 'Connect wallet first';
     statusEl.className   = 'vote-status error';
+    await playIfEnabled('error');
     return;
   }
 
   // Confirmation dialog
   const choiceName = proposal.choices[choiceIndex - 1] || `Choice ${choiceIndex}`;
   const confirmed  = window.confirm(`Vote "${choiceName}" on:\n"${proposal.title}"?`);
-  if (!confirmed) return;
+  if (!confirmed) {
+    await playIfEnabled('click');
+    return;
+  }
 
   // Disable buttons + show loading
   setVoteButtons(buttonsContainer, true);
-  statusEl.textContent = 'Submitting vote...';
+  statusEl.textContent = 'Opening signing tab...';
   statusEl.className   = 'vote-status loading';
 
   try {
     await castVote(proposal.id, proposal.spaceId, choiceIndex, address);
     statusEl.textContent = 'Vote submitted successfully ✅';
     statusEl.className   = 'vote-status success';
-    // Keep buttons disabled after success
+    await playIfEnabled('vote-cast');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Vote failed. Please try again.';
 
     if (msg.includes('already voted')) {
       statusEl.textContent = 'You have already voted on this proposal';
       statusEl.className   = 'vote-status error';
+      await playIfEnabled('warning');
       // Keep buttons disabled
     } else if (msg === 'Signature rejected') {
       statusEl.textContent = 'Signature rejected';
       statusEl.className   = 'vote-status error';
+      await playIfEnabled('error');
       setVoteButtons(buttonsContainer, false);
     } else {
       statusEl.textContent = 'Vote failed. Please try again.';
       statusEl.className   = 'vote-status error';
+      await playIfEnabled('error');
       setVoteButtons(buttonsContainer, false);
     }
   }
@@ -1046,7 +1234,11 @@ let stopRecording: (() => void) | null = null;
 
 // Wake word listener — runs continuously on the detail screen
 let wakeWordRecognition: any = null;
-const WAKE_WORD = 'propo';
+const WAKE_WORD = 'hey'; // Simple wake word - just "hey"
+
+// Voice settings modal state
+let availableVoices: any[] = [];
+let isVoiceSettingsOpen = false;
 
 function startWakeWordListener(): void {
   const SpeechRecognition =
@@ -1058,43 +1250,78 @@ function startWakeWordListener(): void {
   wakeWordRecognition.continuous     = true;
   wakeWordRecognition.interimResults = true;
   wakeWordRecognition.lang           = 'en-US';
+  wakeWordRecognition.maxAlternatives = 3; // Get multiple alternatives for better detection
 
   wakeWordRecognition.onresult = (event: any) => {
-    // Only trigger if voice is idle
-    if (voiceState !== 'idle') return;
-
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      const text = event.results[i][0].transcript.toLowerCase().trim();
-      if (text.includes(WAKE_WORD)) {
-        // Wake word detected — stop listener and start full voice flow
-        stopWakeWordListener();
-        handleVoiceButtonClick();
-        break;
+      const result = event.results[i];
+      
+      // Check all alternatives for better detection
+      for (let j = 0; j < result.length; j++) {
+        const text = result[j].transcript.toLowerCase().trim();
+        console.log('[Wake Word] Heard (alternative ' + j + '):', text, 'confidence:', result[j].confidence);
+        
+        // Check for "hey" - simple and reliable wake word
+        // Matches: "hey", "hay", "a", "eh"
+        const heyVariants = [
+          'hey',
+          'hay', 
+          'a',
+          'eh',
+          'hey.',
+          'hey,',
+          'hey!'
+        ];
+        
+        // Check for "hey" variants - only works when idle
+        const hasWakeWord = heyVariants.some(variant => text === variant || text.startsWith(variant + ' '));
+        if (hasWakeWord && voiceState === 'idle') {
+          console.log('[Wake Word] Wake word "hey" detected! Triggering Ask AI...');
+          // Just trigger the button click - same as manual click
+          handleVoiceButtonClick();
+          return;
+        }
       }
     }
   };
 
   wakeWordRecognition.onend = () => {
-    // Auto-restart if still on detail screen and idle
-    if (appState.screen === 'detail' && voiceState === 'idle' && wakeWordRecognition) {
-      try { wakeWordRecognition.start(); } catch {}
+    // Auto-restart if still on detail screen
+    if (appState.screen === 'detail' && wakeWordRecognition) {
+      try { 
+        wakeWordRecognition.start(); 
+        // Reduced logging - only log on first start, not on every restart
+      } catch (e) {
+        // Silently fail - this is expected if recognition is already running
+      }
     }
   };
 
   wakeWordRecognition.onerror = (e: any) => {
-    // Restart on recoverable errors
-    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    console.log('[Wake Word] Error:', e.error);
+    
+    // Silently handle common errors that are expected during continuous listening
+    if (e.error === 'no-speech' || e.error === 'aborted' || e.error === 'audio-capture') {
+      // These are normal during continuous listening - don't log or restart immediately
+      // The onend handler will restart the listener automatically
+      return;
+    }
+    
+    // For other errors, log and clear the recognition object
+    console.error('[Wake Word] Unexpected error:', e.error);
     wakeWordRecognition = null;
   };
 
   try {
     wakeWordRecognition.start();
+    console.log('[Wake Word] Listener started');
     // Update status hint
     const statusEl = document.getElementById('voice-status');
     if (statusEl && voiceState === 'idle') {
-      statusEl.textContent = 'Say "Propo" or tap to ask AI';
+      statusEl.textContent = 'Say "Hey" to start or click Ask AI';
     }
-  } catch {
+  } catch (e) {
+    console.log('[Wake Word] Failed to start:', e);
     wakeWordRecognition = null;
   }
 }
@@ -1106,39 +1333,156 @@ function stopWakeWordListener(): void {
   }
 }
 
-/** Play a short chime using Web Audio API — no external files needed */
-function playChime(type: 'open' | 'close'): void {
-  try {
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+// ============================================
+// Voice Settings Modal
+// ============================================
 
-    if (type === 'open') {
-      // Rising two-tone: friendly "ding ding"
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.25, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.35);
-    } else {
-      // Falling tone: soft "dong"
-      osc.frequency.setValueAtTime(660, ctx.currentTime);
-      osc.frequency.setValueAtTime(440, ctx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.3);
+async function openVoiceSettings(): Promise<void> {
+  if (isVoiceSettingsOpen) return;
+  isVoiceSettingsOpen = true;
+
+  const modal = document.getElementById('voice-settings-modal');
+  if (!modal) return;
+
+  // Get current settings and capabilities
+  const settings = await getVoiceSettings();
+  const capabilities = await getCapabilities();
+  const elevenKey = await getElevenLabsApiKey();
+
+  console.log('[Voice Settings] Opening voice settings...');
+
+  // Try to fetch available voices
+  if (elevenKey) {
+    try {
+      availableVoices = await fetchAvailableVoices(elevenKey);
+      console.log('[Voice Settings] Fetched voices:', availableVoices.length);
+    } catch (error) {
+      console.error('[Voice Settings] Failed to fetch voices:', error);
+      availableVoices = [];
+      
+      // Show error message in voice selector
+      const upgradeHint = document.getElementById('voice-upgrade-hint');
+      if (upgradeHint) {
+        upgradeHint.style.display = 'block';
+        upgradeHint.innerHTML = `
+          <span style="color: #EF0606;">⚠ Could not load voice library</span><br>
+          <span style="font-size: 9px;">Your API key may not have "Voices: Read" permission enabled. 
+          <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" class="upgrade-link">Enable it here</a></span>
+        `;
+      }
     }
-
-    osc.onended = () => ctx.close();
-  } catch {
-    // Audio not available — silent fail
   }
+
+  // Populate voice selector
+  const voiceSelect = document.getElementById('voice-select') as HTMLSelectElement;
+  if (voiceSelect) {
+    voiceSelect.innerHTML = '';
+    
+    if (capabilities.hasVoiceLibrary && availableVoices.length > 0) {
+      // Group voices by category
+      const categories = new Map<string, any[]>();
+      availableVoices.forEach(voice => {
+        const category = voice.category || 'Other';
+        if (!categories.has(category)) {
+          categories.set(category, []);
+        }
+        categories.get(category)!.push(voice);
+      });
+
+      // Add voices by category
+      categories.forEach((voices, category) => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = category;
+        voices.forEach(voice => {
+          const option = document.createElement('option');
+          option.value = voice.voice_id;
+          option.textContent = voice.name;
+          if (voice.voice_id === settings.selectedVoiceId) {
+            option.selected = true;
+          }
+          optgroup.appendChild(option);
+        });
+        voiceSelect.appendChild(optgroup);
+      });
+      voiceSelect.disabled = false;
+    } else {
+      // Free tier - show default voice only
+      const option = document.createElement('option');
+      option.value = settings.selectedVoiceId;
+      option.textContent = settings.voiceName;
+      option.selected = true;
+      voiceSelect.appendChild(option);
+      voiceSelect.disabled = true;
+      
+      // Show upgrade hint
+      const upgradeHint = document.getElementById('voice-upgrade-hint');
+      if (upgradeHint) {
+        upgradeHint.style.display = 'block';
+      }
+    }
+  }
+
+  // Set speech speed slider
+  const speedSlider = document.getElementById('voice-speed-slider') as HTMLInputElement;
+  const speedValue = document.getElementById('voice-speed-value');
+  if (speedSlider && speedValue) {
+    speedSlider.value = settings.speechSpeed.toString();
+    speedValue.textContent = `${settings.speechSpeed.toFixed(1)}x`;
+    
+    speedSlider.oninput = () => {
+      speedValue.textContent = `${parseFloat(speedSlider.value).toFixed(1)}x`;
+    };
+  }
+
+  // Set sound effects toggle
+  const soundToggle = document.getElementById('sound-effects-toggle');
+  const soundSwitch = document.getElementById('sound-toggle-switch');
+  if (soundToggle && soundSwitch) {
+    if (settings.soundEffectsEnabled) {
+      soundSwitch.classList.add('active');
+    } else {
+      soundSwitch.classList.remove('active');
+    }
+  }
+
+  // Show modal
+  modal.classList.add('show');
+  await playIfEnabled('open');
 }
 
+async function closeVoiceSettings(): Promise<void> {
+  const modal = document.getElementById('voice-settings-modal');
+  if (!modal) return;
+
+  modal.classList.remove('show');
+  isVoiceSettingsOpen = false;
+  await playIfEnabled('close');
+}
+
+async function saveVoiceSettingsFromModal(): Promise<void> {
+  const voiceSelect = document.getElementById('voice-select') as HTMLSelectElement;
+  const speedSlider = document.getElementById('voice-speed-slider') as HTMLInputElement;
+  const soundSwitch = document.getElementById('sound-toggle-switch');
+
+  if (!voiceSelect || !speedSlider || !soundSwitch) return;
+
+  // Get selected voice name
+  const selectedOption = voiceSelect.options[voiceSelect.selectedIndex];
+  const voiceName = selectedOption?.textContent || 'Sarah';
+
+  // Save settings
+  await saveVoiceSettings({
+    selectedVoiceId: voiceSelect.value,
+    voiceName: voiceName,
+    speechSpeed: parseFloat(speedSlider.value),
+    soundEffectsEnabled: soundSwitch.classList.contains('active')
+  });
+
+  await playIfEnabled('success');
+  await closeVoiceSettings();
+}
+
+/** Play a short chime using Web Audio API — no external files needed */
 function setVoiceState(state: VoiceState): void {
   voiceState = state;
   const btn      = document.getElementById('btn-voice') as HTMLButtonElement | null;
@@ -1152,7 +1496,7 @@ function setVoiceState(state: VoiceState): void {
   switch (state) {
     case 'idle':
       btn.textContent      = '🎙️ Ask AI';
-      statusEl.textContent = 'Say "Propo" or tap to ask AI';
+      statusEl.textContent = 'Say "Hey" to start or click Ask AI';
       // Restart wake word listener when returning to idle
       setTimeout(() => startWakeWordListener(), 300);
       break;
@@ -1225,13 +1569,13 @@ async function handleVoiceButtonClick(): Promise<void> {
   setVoiceState('recording');
   showVoiceTranscript('');
   stopWakeWordListener(); // pause wake word while recording
-  playChime('open');
+  await playIfEnabled('mic-start');
 
   const { promise, stop } = recordWithSpeechAPI(
     (interim, _isFinal) => {
       if (interim) showVoiceTranscript(interim);
     },
-    2000
+    3000  // 3 seconds of silence before stopping (reduced for better responsiveness)
   );
   stopRecording = stop;
 
@@ -1240,11 +1584,18 @@ async function handleVoiceButtonClick(): Promise<void> {
     transcript = await promise;
   } catch (err: any) {
     console.error('[Voice] Recording failed:', err);
+    // Don't show error if it's just "no speech" - user might have changed their mind
+    if (err?.message && err.message.includes('No speech detected')) {
+      console.log('[Voice] No speech detected, returning to idle');
+      setVoiceState('idle');
+      return;
+    }
     showVoiceError(err?.message || 'Microphone access denied or unavailable.');
+    await playIfEnabled('error');
     return;
   } finally {
     stopRecording = null;
-    playChime('close'); // 🔕 mic closed sound
+    await playIfEnabled('mic-stop');
   }
 
   if (!transcript) {
@@ -1260,23 +1611,140 @@ async function handleVoiceButtonClick(): Promise<void> {
   let answer: string;
   try {
     answer = await askAboutProposal(transcript, mistralKey);
+    console.log('[Voice] AI response received, length:', answer.length);
   } catch (err: any) {
     console.error('[Voice] Mistral failed:', err);
     showVoiceError('AI response failed. Try again.');
+    await playIfEnabled('error');
     return;
   }
 
-  // Step 3: TTS — speak the clean plain-text answer
-  setVoiceState('speaking');
+  // Step 3: Detect language from AI response (not from user's dropdown)
+  const detectedLanguage = detectLanguage(answer);
+  console.log('[Voice] Detected language from AI response:', detectedLanguage);
+  console.log('[Voice] AI response preview:', answer.substring(0, 100) + '...');
+  console.log('[Voice] ===== FULL TEXT BEING SENT TO TTS =====');
+  console.log('[Voice] Text:', answer);
+  console.log('[Voice] Text length:', answer.length, 'characters');
+  console.log('[Voice] ==========================================');
+
+  // Step 4: TTS — speak the clean plain-text answer with native accent
   try {
-    await speakTextStream(answer, elevenKey);
+    // Get user's voice settings
+    const settings = await getVoiceSettings();
+    
+    console.log('[Voice] Starting TTS with language:', detectedLanguage, 'voice:', settings.selectedVoiceId);
+    
+    // Use detected language for native accent, not user's dropdown selection
+    await speakTextStream(
+      answer, 
+      elevenKey, 
+      settings.selectedVoiceId, 
+      detectedLanguage,
+      () => {
+        // Callback when audio is ready to play
+        console.log('[Voice] Audio ready, changing state to speaking');
+        setVoiceState('speaking');
+      }
+    );
+    
+    console.log('[Voice] TTS completed successfully');
   } catch (err: any) {
     console.error('[Voice] TTS failed:', err);
-    showVoiceError('Could not play audio response.');
+    console.error('[Voice] TTS error details:', {
+      message: err?.message,
+      stack: err?.stack,
+      detectedLanguage,
+      answerLength: answer?.length
+    });
+    // Show the actual error message from TTS (which includes helpful hints)
+    showVoiceError(err?.message || 'Could not play audio response.');
+    await playIfEnabled('error');
     return;
   }
 
   setVoiceState('idle');
+}
+
+// ============================================
+// Theme System
+// ============================================
+
+async function initializeTheme(): Promise<void> {
+  const savedTheme = await getTheme();
+  applyTheme(savedTheme);
+  updateThemeButtonIcon(savedTheme);
+
+  const dropdown = document.getElementById('theme-dropdown');
+  if (dropdown) {
+    dropdown.innerHTML = '';
+    THEMES.forEach(theme => {
+      const option = document.createElement('div');
+      option.className = 'theme-option';
+      if (theme.name === savedTheme) option.classList.add('selected');
+      option.dataset.theme = theme.name;
+      option.innerHTML = `
+        <img class="theme-option-icon" src="${theme.icon}" alt="${theme.displayName}" style="width:20px;height:20px;object-fit:contain;border-radius:4px;">
+        <span class="theme-option-name">${theme.displayName}</span>
+      `;
+      dropdown.appendChild(option);
+    });
+  }
+
+  const themeBtn = document.getElementById('btn-theme');
+  const themeDropdown = document.getElementById('theme-dropdown');
+
+  if (themeBtn && themeDropdown) {
+    themeBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      themeDropdown.classList.toggle('show');
+      if (themeDropdown.classList.contains('show')) {
+        await playIfEnabled('click');
+      }
+    });
+
+    themeDropdown.addEventListener('click', async (e) => {
+      const target = e.target as HTMLElement;
+      const option = target.closest('.theme-option') as HTMLElement;
+      if (option && option.dataset.theme) {
+        const themeName = option.dataset.theme as ThemeName;
+        await saveTheme(themeName);
+        applyTheme(themeName);
+        updateThemeButtonIcon(themeName);
+        themeDropdown.querySelectorAll('.theme-option').forEach(opt => opt.classList.remove('selected'));
+        option.classList.add('selected');
+        themeDropdown.classList.remove('show');
+        await playIfEnabled('success');
+        broadcastThemeChange(themeName);
+      }
+    });
+
+    document.addEventListener('click', () => {
+      if (themeDropdown.classList.contains('show')) {
+        themeDropdown.classList.remove('show');
+      }
+    });
+  }
+}
+
+function updateThemeButtonIcon(theme: ThemeName): void {
+  const themeBtn = document.getElementById('btn-theme');
+  if (themeBtn) {
+    const themeData = THEMES.find(t => t.name === theme);
+    if (themeData) {
+      themeBtn.innerHTML = `<img src="${themeData.icon}" alt="${themeData.displayName}" style="width:18px;height:18px;object-fit:contain;border-radius:3px;">`;
+    }
+  }
+}
+
+function broadcastThemeChange(theme: ThemeName): void {
+  // Send message to all tabs to update theme
+  chrome.runtime.sendMessage({
+    type: 'THEME_CHANGED',
+    theme: theme
+  }).catch(() => {
+    // Ignore errors if no listeners
+  });
 }
 
 // ============================================
@@ -1308,28 +1776,47 @@ async function initialize() {
   });
 
   // Feature 1 button wiring
-  connectBtn.addEventListener('click', connectWallet);
-  document.getElementById('retry-btn')!.addEventListener('click', connectWallet);
-  changeWalletBtn.addEventListener('click', changeWallet);
-  cancelBtn.addEventListener('click', () => {
+  connectBtn.addEventListener('click', async () => {
+    await playIfEnabled('click');
+    connectWallet();
+  });
+  document.getElementById('retry-btn')!.addEventListener('click', async () => {
+    await playIfEnabled('click');
+    connectWallet();
+  });
+  changeWalletBtn.addEventListener('click', async () => {
+    await playIfEnabled('click');
+    changeWallet();
+  });
+  cancelBtn.addEventListener('click', async () => {
+    await playIfEnabled('click');
     isConnecting = false;
     showState('disconnected');
   });
-  disconnectBtn.addEventListener('click', disconnectWallet);
+  disconnectBtn.addEventListener('click', async () => {
+    await playIfEnabled('click');
+    disconnectWallet();
+  });
 
   // Feature 2 button wiring
   document.getElementById('btn-proposals')!.addEventListener('click', async () => {
+    await playIfEnabled('click');
     appState.activeTab = 'all';
+    appState.proposalsSkip = 0;
+    appState.hasMoreProposals = true;
     navigate('proposals');
     updateActiveTabUI();
     await loadProposalsByTab();
+    setupInfiniteScroll();
   });
 
-  document.getElementById('btn-back-proposals')!.addEventListener('click', () => {
+  document.getElementById('btn-back-proposals')!.addEventListener('click', async () => {
+    await playIfEnabled('click');
     navigate('connected');
   });
 
-  document.getElementById('btn-back-detail')!.addEventListener('click', () => {
+  document.getElementById('btn-back-detail')!.addEventListener('click', async () => {
+    await playIfEnabled('click');
     stopSpeaking();
     stopWakeWordListener();
     resetConversation();
@@ -1340,18 +1827,111 @@ async function initialize() {
     }
   });
 
-  document.getElementById('btn-reload-proposals')!.addEventListener('click', () => {
+  document.getElementById('btn-reload-proposals')!.addEventListener('click', async () => {
+    await playIfEnabled('click');
     lastFetchTime = 0; // force reload
+    appState.proposalsSkip = 0;
+    appState.hasMoreProposals = true;
     loadProposalsByTab(true);
   });
 
-  document.getElementById('btn-retry')!.addEventListener('click', loadProposalsByTab);
+  document.getElementById('btn-retry')!.addEventListener('click', async () => {
+    await playIfEnabled('click');
+    loadProposalsByTab();
+  });
 
   // Feature 4: Voice AI button
   document.getElementById('btn-voice')!.addEventListener('click', handleVoiceButtonClick);
 
+  // Voice settings button
+  document.getElementById('btn-voice-settings')!.addEventListener('click', openVoiceSettings);
+  document.getElementById('btn-close-voice-settings')!.addEventListener('click', closeVoiceSettings);
+  document.getElementById('btn-save-voice-settings')!.addEventListener('click', saveVoiceSettingsFromModal);
+
+  // Sound effects toggle
+  document.getElementById('sound-effects-toggle')!.addEventListener('click', async () => {
+    const soundSwitch = document.getElementById('sound-toggle-switch');
+    if (soundSwitch) {
+      soundSwitch.classList.toggle('active');
+      await playIfEnabled('click');
+    }
+  });
+
+  // Close modal when clicking outside
+  document.getElementById('voice-settings-modal')!.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+      closeVoiceSettings();
+    }
+  });
+
+  // Language selector event listeners
+  document.addEventListener('click', async (e) => {
+    const target = e.target as HTMLElement;
+    
+    // Toggle dropdown
+    if (target.closest('#language-btn')) {
+      const dropdown = document.getElementById('language-dropdown');
+      if (dropdown) {
+        dropdown.classList.toggle('show');
+        await playIfEnabled(dropdown.classList.contains('show') ? 'open' : 'close');
+      }
+      e.stopPropagation();
+      return;
+    }
+    
+    // Select language
+    if (target.closest('.language-option')) {
+      const option = target.closest('.language-option') as HTMLElement;
+      const code = option.dataset.code;
+      const flag = option.dataset.flag;
+      if (code && appState.selectedProposal) {
+        await playIfEnabled('click');
+        
+        // Save preference
+        await saveLanguagePreference(code);
+        
+        // Update UI
+        const currentLangEl = document.getElementById('current-lang');
+        const currentFlagEl = document.getElementById('current-lang-flag');
+        if (currentLangEl) {
+          currentLangEl.textContent = code.toUpperCase();
+        }
+        if (currentFlagEl && flag) {
+          currentFlagEl.textContent = flag;
+        }
+        
+        // Update selected state
+        document.querySelectorAll('.language-option').forEach(opt => {
+          opt.classList.remove('selected');
+        });
+        option.classList.add('selected');
+        
+        // Close dropdown
+        const dropdown = document.getElementById('language-dropdown');
+        if (dropdown) {
+          dropdown.classList.remove('show');
+        }
+        
+        // Reload summary in new language
+        await loadAISummary(appState.selectedProposal, code);
+      }
+      e.stopPropagation();
+      return;
+    }
+    
+    // Close dropdown when clicking outside
+    const dropdown = document.getElementById('language-dropdown');
+    if (dropdown && dropdown.classList.contains('show')) {
+      dropdown.classList.remove('show');
+      await playIfEnabled('close');
+    }
+  });
+
   // Bind tab click events
   bindTabEvents();
+
+  // Initialize theme system
+  await initializeTheme();
 
   // Check for API keys first — show setup if missing
   const keysData = await chrome.storage.local.get(['mistralApiKey', 'elevenLabsApiKey']);
@@ -1375,3 +1955,56 @@ async function initialize() {
 }
 
 document.addEventListener('DOMContentLoaded', initialize);
+
+// ============================================
+// Infinite Scroll for Proposals
+// ============================================
+
+function setupInfiniteScroll(): void {
+  const proposalsList = document.getElementById('proposals-list');
+  if (!proposalsList) {
+    console.warn('[Infinite Scroll] proposals-list element not found');
+    return;
+  }
+
+  console.log('[Infinite Scroll] Setting up scroll listener on proposals-list');
+  
+  // Remove existing listener if any
+  proposalsList.removeEventListener('scroll', handleProposalsScroll);
+  
+  // Add scroll listener to the actual scrollable container
+  proposalsList.addEventListener('scroll', handleProposalsScroll);
+  
+  console.log('[Infinite Scroll] Scroll listener attached successfully');
+}
+
+async function handleProposalsScroll(e: Event): Promise<void> {
+  const target = e.target as HTMLElement;
+  
+  const scrollHeight = target.scrollHeight;
+  const scrollTop = target.scrollTop;
+  const clientHeight = target.clientHeight;
+  const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+  
+  console.log('[Infinite Scroll] Scroll detected:', {
+    scrollHeight,
+    scrollTop,
+    clientHeight,
+    distanceFromBottom,
+    isLoading: isLoadingProposals,
+    hasMore: appState.hasMoreProposals,
+    currentSkip: appState.proposalsSkip
+  });
+  
+  // Check if scrolled near bottom (within 200px)
+  const scrolledToBottom = distanceFromBottom < 200;
+  
+  if (scrolledToBottom && !isLoadingProposals && appState.hasMoreProposals) {
+    console.log('[Infinite Scroll] Loading more proposals...');
+    
+    // Increment skip to load next batch (always 40 for consistency)
+    appState.proposalsSkip += 40;
+    
+    await loadProposalsByTab();
+  }
+}

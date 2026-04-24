@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Main G shape -->
+  <path d="M15 15 L85 15 L85 45 L60 45 L60 55 L75 55 L75 65 L45 65 L45 35 L25 35 L25 85 L15 85 Z" fill="#FF0000"/>
+  <!-- Keyhole circle -->
+  <circle cx="45" cy="25" r="6" fill="#000000"/>
+  <!-- Keyhole slot -->
+  <rect x="42" y="31" width="6" height="8" fill="#000000"/>
+</svg>

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Chrome extension for Snapshot governance voting with Web3Modal wallet connection",
   "scripts": {
-    "build": "esbuild src/popup.ts --bundle --outfile=dist/popup.js --platform=browser --target=chrome100 && esbuild src/background.ts --bundle --outfile=dist/background.js --platform=browser --target=chrome100 && cp manifest.json dist/ && cp -r popup dist/ && cp -r recorder dist/",
+    "build": "esbuild src/popup.ts --bundle --outfile=dist/popup.js --platform=browser --target=chrome100 && esbuild src/background.ts --bundle --outfile=dist/background.js --platform=browser --target=chrome100 && cp manifest.json dist/ && cp -r popup dist/ && cp -r recorder dist/ && cp -r signer dist/ && cp -r sign-vote dist/ && cp -r icons dist/",
     "watch": "esbuild src/popup.ts --bundle --outfile=dist/popup.js --platform=browser --target=chrome100 --watch"
   },
   "devDependencies": {
@@ -12,6 +12,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@elevenlabs/elevenlabs-js": "^2.44.0"
+    "@elevenlabs/elevenlabs-js": "^2.44.0",
+    "franc-min": "^6.2.0"
   }
 }

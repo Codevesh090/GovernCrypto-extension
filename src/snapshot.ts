@@ -58,12 +58,12 @@ async function fetchGraphQL(body: object): Promise<RawProposal[]> {
   return json.data.proposals as RawProposal[];
 }
 
-// Fetch 40 active proposals from ALL DAOs
-export async function fetchAllActiveProposals(): Promise<RawProposal[]> {
+// Fetch 40 active proposals from ALL DAOs with pagination
+export async function fetchAllActiveProposals(skip: number = 0): Promise<RawProposal[]> {
   const query = `{
     proposals(
       first: 40,
-      skip: 0,
+      skip: ${skip},
       where: { state: "active" },
       orderBy: "end",
       orderDirection: asc
@@ -76,13 +76,13 @@ export async function fetchAllActiveProposals(): Promise<RawProposal[]> {
   return fetchGraphQL({ query });
 }
 
-// Fetch 5 latest proposals for a specific space
-async function fetchProposalsBySpace(spaceId: string): Promise<RawProposal[]> {
+// Fetch 5 latest proposals for a specific space with pagination
+async function fetchProposalsBySpace(spaceId: string, skip: number = 0): Promise<RawProposal[]> {
   const query = `
-    query GetDAOProposals($space: String!) {
+    query GetDAOProposals($space: String!, $skip: Int!) {
       proposals(
-        first: 5,
-        skip: 0,
+        first: 20,
+        skip: $skip,
         where: { space: $space },
         orderBy: "created",
         orderDirection: desc
@@ -93,18 +93,18 @@ async function fetchProposalsBySpace(spaceId: string): Promise<RawProposal[]> {
       }
     }
   `;
-  return fetchGraphQL({ query, variables: { space: spaceId } });
+  return fetchGraphQL({ query, variables: { space: spaceId, skip } });
 }
 
 // Fetch with fallback — tries each space until one returns data
-export async function fetchDAOProposals(spaceKey: string): Promise<RawProposal[]> {
+export async function fetchDAOProposals(spaceKey: string, skip: number = 0): Promise<RawProposal[]> {
   const spaces = DAO_FALLBACKS[spaceKey] || [spaceKey];
 
   console.log('DAO:', spaceKey, '→ trying spaces:', spaces);
 
   for (const space of spaces) {
     try {
-      const data = await fetchProposalsBySpace(space);
+      const data = await fetchProposalsBySpace(space, skip);
       if (Array.isArray(data) && data.length > 0) {
         console.log(`Proposals fetched from ${space}:`, data.length);
         return data;

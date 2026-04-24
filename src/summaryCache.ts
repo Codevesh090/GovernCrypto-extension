@@ -1,9 +1,9 @@
 const CACHE_PREFIX = 'summary_';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-export async function getCachedSummary(proposalId: string): Promise<string | null> {
+export async function getCachedSummary(proposalId: string, language: string = 'en'): Promise<string | null> {
   try {
-    const key = CACHE_PREFIX + proposalId;
+    const key = `${CACHE_PREFIX}${language}_${proposalId}`;
     const result = await chrome.storage.local.get(key);
     if (!result[key]) return null;
 
@@ -20,9 +20,9 @@ export async function getCachedSummary(proposalId: string): Promise<string | nul
   }
 }
 
-export async function cacheSummary(proposalId: string, summary: string): Promise<void> {
+export async function cacheSummary(proposalId: string, summary: string, language: string = 'en'): Promise<void> {
   try {
-    const key = CACHE_PREFIX + proposalId;
+    const key = `${CACHE_PREFIX}${language}_${proposalId}`;
     const entry = JSON.stringify({ summary, createdAt: Date.now() });
     await chrome.storage.local.set({ [key]: entry });
   } catch {

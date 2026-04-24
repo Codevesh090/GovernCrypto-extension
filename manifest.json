@@ -3,14 +3,27 @@
   "name": "GovernCrypto",
   "version": "1.0.0",
   "description": "DAOs need voters. Voters need this. Turn DAO governance into a conversation — understand, ask, and vote instantly.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": ["storage", "sidePanel"],
   "host_permissions": [
     "https://api.mistral.ai/*",
     "https://api.elevenlabs.io/*",
-    "https://seq.snapshot.org/*"
+    "https://seq.snapshot.org/*",
+    "https://hub.snapshot.org/*",
+    "http://localhost:3000/*",
+    "http://localhost:3001/*"
   ],
   "action": {
-    "default_title": "GovernCrypto"
+    "default_title": "GovernCrypto",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "side_panel": {
     "default_path": "popup/popup.html"
@@ -20,7 +33,11 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["recorder/recorder.html", "recorder/recorder.js"],
+      "resources": [
+        "recorder/recorder.html", "recorder/recorder.js",
+        "signer/signer.html", "signer/signer.js",
+        "sign-vote/sign.html", "sign-vote/sign.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ],

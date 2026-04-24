@@ -59,6 +59,48 @@ const VOTE_TYPE: Array<{ name: string; type: string }> = [
 
 const SNAPSHOT_RELAY = 'https://seq.snapshot.org/';
 
+const SIGN_PAGE_URL = 'http://localhost:3001/sign.html';
+
+/**
+ * Opens the hosted sign page (localhost:3000) where MetaMask IS injected.
+ * Passes proposalId + choice via URL params.
+ * Resolves when VOTE_SUCCESS postMessage is received back.
+ */
+export function castVoteViaTab(
+  proposalId:  string,
+  choiceIndex: number
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const url = `${SIGN_PAGE_URL}?proposalId=${encodeURIComponent(proposalId)}&choice=${choiceIndex}`;
+    const tab = window.open(url, '_blank');
+
+    if (!tab) {
+      reject(new Error('Could not open signing tab. Please allow popups for this extension.'));
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      window.removeEventListener('message', onMessage);
+      reject(new Error('Vote signing timed out.'));
+    }, 300000);
+
+    function onMessage(event: MessageEvent) {
+      // Accept messages from localhost:3000
+      if (event.origin !== 'http://localhost:3001') return;
+      const msg = event.data;
+      if (!msg) return;
+
+      if (msg.type === 'VOTE_SUCCESS' && msg.proposalId === proposalId) {
+        window.removeEventListener('message', onMessage);
+        clearTimeout(timeout);
+        resolve();
+      }
+    }
+
+    window.addEventListener('message', onMessage);
+  });
+}
+
 // ============================================
 // Pure Functions
 // ============================================
@@ -104,67 +146,14 @@ export function buildTypedData(payload: VotePayload): TypedData {
 // ============================================
 
 /**
- * Full vote flow: build → sign → submit.
- * Throws descriptive errors on each failure mode.
+ * Full vote flow: opens the sign-vote tab which handles
+ * wallet connection, EIP-712 signing, and Snapshot relay submission.
  */
 export async function castVote(
   proposalId:   string,
-  spaceId:      string,
+  _spaceId:     string,
   choiceIndex:  number,
-  voterAddress: string
+  _voterAddress: string
 ): Promise<void> {
-  // 1. Build payload and typed data
-  const payload   = buildVotePayload(proposalId, spaceId, choiceIndex, voterAddress);
-  const typedData = buildTypedData(payload);
-
-  // 2. Guard: wallet provider must be available
-  const ethereum = (window as any).ethereum;
-  if (!ethereum) {
-    throw new Error('No wallet provider found');
-  }
-
-  // 3. Sign via eth_signTypedData_v4 (NEVER personal_sign)
-  let signature: string;
-  try {
-    signature = await ethereum.request({
-      method: 'eth_signTypedData_v4',
-      params: [voterAddress, JSON.stringify(typedData)]
-    });
-  } catch (err: any) {
-    // MetaMask rejection: error code 4001
-    if (err?.code === 4001 || err?.message?.toLowerCase().includes('user rejected')) {
-      throw new Error('Signature rejected');
-    }
-    throw new Error(`Signing failed: ${err?.message || err}`);
-  }
-
-  // 4. Submit to Snapshot relay — do NOT modify typedData after signing
-  let response: Response;
-  try {
-    response = await fetch(SNAPSHOT_RELAY, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        address: voterAddress,
-        sig:     signature,
-        data:    typedData
-      })
-    });
-  } catch {
-    throw new Error('Network error. Please try again.');
-  }
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    if (body.toLowerCase().includes('already voted')) {
-      throw new Error('You have already voted on this proposal');
-    }
-    throw new Error(`Relay error ${response.status}: ${body}`);
-  }
-
-  // Check response body for "already voted" even on 200
-  const json = await response.json().catch(() => ({}));
-  if (json?.error?.toLowerCase?.().includes('already voted')) {
-    throw new Error('You have already voted on this proposal');
-  }
+  await castVoteViaTab(proposalId, choiceIndex);
 }

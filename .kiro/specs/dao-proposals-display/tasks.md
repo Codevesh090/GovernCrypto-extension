@@ -37,7 +37,7 @@ Implement Feature 2 by creating two new source modules (`src/snapshot.ts`, `src/
   - Proposals list: `#proposals-list` with `flex: 1`, `overflow-y: auto`, `padding: 8px`
   - Proposal card: `.proposal-card` with `background: var(--bg-card)`, `border-radius: 8px`, `padding: 12px`, `margin-bottom: 8px`, `cursor: pointer`, hover effect
   - Status badges: `.badge` base + `.badge-active` (green border `#00ff88`), `.badge-pending` (amber border `#f59e0b`), `.badge-closed` (grey border `#6b7280`)
-  - Progress bar: `.progress-bar` track (`height: 4px`, `background: #2d2d4a`, `border-radius: 2px`) + `.progress-fill` + `.fill-green` (`#00ff88`), `.fill-red` (`#ef4444`), `.fill-grey` (`#4b5563`)
+  - Progress bar: `.progress-bar` track (`height: 4px`, `background: #2d2d4a`, `border-radius: 2px`) + `.progress-fill` + `.fill-green` (`#00ff88`), `.fill-red` (`#EF0606`), `.fill-grey` (`#4b5563`)
   - Choice labels: `.color-green`, `.color-red`, `.color-grey` text colors
   - Vote buttons: disabled state with `opacity: 0.4`, `cursor: not-allowed`, `pointer-events: none`
   - Detail content: `#detail-content` with `flex: 1`, `overflow-y: auto`, `padding: 12px`

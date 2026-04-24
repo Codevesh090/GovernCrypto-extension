@@ -3,6 +3,28 @@ const MISTRAL_MODEL = 'mistral-small-latest';
 
 const TIMEOUT_MS = 10000;
 
+// Language code to full name mapping
+function getLanguageName(code: string): string {
+  const names: Record<string, string> = {
+    'en': 'English',
+    'es': 'Spanish',
+    'fr': 'French',
+    'de': 'German',
+    'zh': 'Chinese',
+    'ja': 'Japanese',
+    'hi': 'Hindi',
+    'hinglish': 'Hinglish (mix of Hindi and English)',
+    'pt': 'Portuguese',
+    'ru': 'Russian',
+    'ko': 'Korean',
+    'it': 'Italian',
+    'nl': 'Dutch',
+    'tr': 'Turkish',
+    'vi': 'Vietnamese'
+  };
+  return names[code] || 'English';
+}
+
 const SYSTEM_PROMPT = `You are summarizing a DAO governance proposal for a Chrome extension UI. The user is a token holder who wants to understand what they're voting on quickly.
 
 You MUST format your response EXACTLY like this. Do not add any extra text, preamble, or explanation outside of these 6 sections:
@@ -129,18 +151,24 @@ export async function callMistral(
 /**
  * Sends proposal body to Mistral and returns the formatted summary string.
  * Retries on 503/429 with exponential backoff.
+ * @param language - ISO 639-1 language code (e.g., 'en', 'es', 'fr')
  */
-export async function generateSummary(proposalBody: string, apiKey: string): Promise<string> {
+export async function generateSummary(proposalBody: string, apiKey: string, language: string = 'en'): Promise<string> {
   if (!proposalBody || proposalBody.trim().length < 20) {
     return 'No description provided for this proposal.';
   }
+
+  // Language instruction for non-English
+  const languageInstruction = language !== 'en' 
+    ? `\n\nIMPORTANT: Respond in ${getLanguageName(language)}. Keep the same format and section headings in English, but write all content in ${getLanguageName(language)}.`
+    : '';
 
   const requestBody = JSON.stringify({
     model: MISTRAL_MODEL,
     messages: [
       {
         role: 'user',
-        content: `${SYSTEM_PROMPT}\n\nProposal to summarize:\n${proposalBody}`
+        content: `${SYSTEM_PROMPT}${languageInstruction}\n\nProposal to summarize:\n${proposalBody}`
       }
     ],
     temperature: 0.3,

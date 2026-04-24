@@ -384,7 +384,7 @@ return {
 
 /* Progress fills */
 --fill-green: #00ff88;
---fill-red:   #ef4444;
+--fill-red:   #EF0606;
 --fill-grey:  #4b5563;
 
 /* Text */

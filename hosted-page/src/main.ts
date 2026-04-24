@@ -64,13 +64,20 @@ function sendToExtension(address: string) {
 
   console.log('Sending address to extension:', address)
 
+  // Primary: use chrome.storage so the extension popup picks it up via storage listener
+  if (typeof chrome !== 'undefined' && chrome.storage) {
+    chrome.storage.local.set({ connectedAddress: address }, () => {
+      console.log('Address saved to chrome.storage')
+    })
+  }
+
+  // Fallback: try postMessage to opener if available
   if (window.opener) {
     window.opener.postMessage({ type: 'WALLET_CONNECTED', address }, '*')
-    console.log('Message sent!')
-    setTimeout(() => window.close(), 500)
-  } else {
-    console.error('No window.opener — not opened from extension?')
+    console.log('Message sent via postMessage!')
   }
+
+  setTimeout(() => window.close(), 800)
 }
 
 function sendError(msg: string) {
@@ -147,6 +154,32 @@ window.addEventListener('load', () => {
   console.log('Hosted page loaded')
   connectButton.addEventListener('click', connectWallet)
   statusDiv.classList.add('hidden')
+  
+  // Load and apply saved theme
+  loadTheme()
+})
+
+// Theme support
+async function loadTheme() {
+  try {
+    const result = await chrome.storage.local.get('selectedTheme')
+    const theme = result.selectedTheme || 'dark'
+    applyTheme(theme)
+  } catch (err) {
+    console.log('Could not load theme (not in extension context)')
+  }
+}
+
+function applyTheme(theme: string) {
+  document.body.classList.remove('theme-dark', 'theme-midnight', 'theme-ocean', 'theme-light', 'theme-pastel')
+  document.body.classList.add(`theme-${theme}`)
+}
+
+// Listen for theme changes from extension
+chrome.runtime?.onMessage.addListener((message) => {
+  if (message.type === 'THEME_CHANGED') {
+    applyTheme(message.theme)
+  }
 })
 
 export {}

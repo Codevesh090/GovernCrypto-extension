@@ -35,7 +35,7 @@
       <!-- Connected State -->
       <div id="connected-state" class="screen state hidden">
         <div class="wallet-info">
-          <div class="wallet-icon">🔗</div>
+          <div class="wallet-icon"><img id="wallet-icon-img" src="../../icons/wallet-dark.png" alt="Wallet" style="width:20px;height:20px;object-fit:contain;"></div>
           <div class="wallet-details">
             <p class="wallet-label">Connected Wallet</p>
             <p id="wallet-address" class="wallet-address"></p>
@@ -69,7 +69,7 @@
     <!-- Screen 0: Setup — Feature 3 -->
     <div id="screen-setup" class="screen" style="display:none;">
       <div class="setup-container">
-        <div class="setup-logo">🏛️</div>
+        <div class="setup-logo"><img src="logo.png" alt="GovernCrypto" style="width: 48px; height: 48px;"></div>
         <h2 class="setup-title">Setup GovernCrypto</h2>
         <p class="setup-subtitle">Enter your API keys to enable AI and voice features</p>
 
@@ -97,6 +97,12 @@
         <button id="btn-back-proposals" class="btn-back">← Back</button>
         <span class="screen-title">Proposals</span>
         <button id="btn-reload-proposals" class="btn-reload" title="Reload proposals"><span class="reload-icon">↻</span></button>
+        <div style="position: relative;">
+          <button id="btn-theme" class="btn-theme" title="Change theme"></button>
+          <div id="theme-dropdown" class="theme-dropdown">
+            <!-- Theme options will be populated by JS -->
+          </div>
+        </div>
       </div>
       <div class="tabs" id="dao-tabs">
         <button class="tab active" data-tab="all">ALL</button>
@@ -123,6 +129,10 @@
         <button id="btn-retry" class="retry-button">Retry</button>
       </div>
       <div id="proposals-list"></div>
+      <div id="proposals-loading-more" class="proposals-status" style="display:none;">
+        <div class="loading-spinner"></div>
+        <p>Loading more proposals...</p>
+      </div>
       <div id="last-updated-label" class="last-updated"></div>
     </div>
 
@@ -141,9 +151,57 @@
 
       <!-- Feature 4: Voice AI Assistant -->
       <div id="voice-section">
-        <div id="voice-status">Tap to ask AI about this proposal</div>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px;">
+          <div id="voice-status">Tap to ask AI about this proposal</div>
+          <button id="btn-voice-settings" class="voice-settings-btn" title="Voice Settings"><img src="../../icons/settings.png" alt="Settings" style="width:16px;height:16px;object-fit:contain;"></button>
+        </div>
         <button id="btn-voice" aria-label="Ask AI by voice">🎙️ Ask AI</button>
         <div id="voice-transcript" style="display:none;"></div>
+      </div>
+    </div>
+
+    <!-- Voice Settings Modal -->
+    <div id="voice-settings-modal" class="voice-settings-modal">
+      <div class="voice-settings-panel">
+        <div class="voice-settings-header">
+          <h3 class="voice-settings-title"><img src="../../icons/settings.png" alt="Settings" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-right:6px;"> Voice Settings</h3>
+          <button id="btn-close-voice-settings" class="voice-settings-close">×</button>
+        </div>
+
+        <!-- Voice Selection -->
+        <div class="voice-setting-group">
+          <label class="voice-setting-label">
+            Voice (English Only)
+            <span id="voice-lock-icon" class="lock-icon" style="display:none;">🔒</span>
+          </label>
+          <p class="voice-setting-note">
+            ℹ️ This setting only affects English responses. Other languages use native accent voices automatically.
+          </p>
+          <select id="voice-select" class="voice-select">
+            <option value="EXAVITQu4vr4xnSDxMaL">Sarah</option>
+          </select>
+          <p id="voice-upgrade-hint" class="upgrade-hint" style="display:none;">
+            <a href="https://elevenlabs.io/pricing" target="_blank" class="upgrade-link">Upgrade to Starter</a> to access 10+ professional voices
+          </p>
+        </div>
+
+        <!-- Speech Speed -->
+        <div class="voice-setting-group">
+          <label class="voice-setting-label">Speech Speed</label>
+          <input type="range" id="voice-speed-slider" class="voice-speed-slider" min="0.5" max="2.0" step="0.1" value="1.0" />
+          <div id="voice-speed-value" class="voice-speed-value">1.0x</div>
+        </div>
+
+        <!-- Sound Effects Toggle -->
+        <div class="voice-setting-group">
+          <div id="sound-effects-toggle" class="voice-toggle">
+            <span class="voice-toggle-label">Sound Effects</span>
+            <div id="sound-toggle-switch" class="voice-toggle-switch active"></div>
+          </div>
+        </div>
+
+        <!-- Save Button -->
+        <button id="btn-save-voice-settings" class="setup-save-btn">Save Settings</button>
       </div>
     </div>
 
