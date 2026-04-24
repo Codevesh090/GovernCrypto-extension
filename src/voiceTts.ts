@@ -52,13 +52,19 @@ function getVoiceForLanguage(language: string, selectedVoiceId: string): string 
   };
   
   // For non-English languages, ALWAYS use the native voice (ignore user's selection)
-  if (language && language !== 'en' && languageVoiceMap[language]) {
-    console.log(`[TTS] Using native ${language} voice (user selection ignored for non-English):`, languageVoiceMap[language]);
+  if (language && language !== 'en' && language !== 'hinglish' && languageVoiceMap[language]) {
+    // console.log(`[TTS] Using native ${language} voice (user selection ignored for non-English):`, languageVoiceMap[language]);
     return languageVoiceMap[language];
   }
   
+  // Hinglish uses Hindi voice
+  if (language === 'hinglish' && languageVoiceMap['hi']) {
+    // console.log(`[TTS] Using Hindi voice for Hinglish:`, languageVoiceMap['hi']);
+    return languageVoiceMap['hi'];
+  }
+  
   // For English, use the user's selected voice
-  console.log(`[TTS] Using user-selected voice for English:`, selectedVoiceId);
+  // console.log(`[TTS] Using user-selected voice for English:`, selectedVoiceId);
   return selectedVoiceId;
 }
 
@@ -94,10 +100,10 @@ export async function speakTextStream(
     ? `${TTS_BASE}/${finalVoiceId}/stream`
     : `${TTS_BASE}/${finalVoiceId}`;
 
-  console.log(`[TTS] Using model: ${model}, voice: ${finalVoiceId}, streaming: ${capabilities.hasStreaming}, language: ${language || 'en'}`);
-  console.log(`[TTS] Speech speed: ${settings.speechSpeed}x`);
-  console.log(`[TTS] Text to speak (first 200 chars): "${text.substring(0, 200)}..."`);
-  console.log(`[TTS] Text length: ${text.length} characters`);
+  // console.log(`[TTS] Using model: ${model}, voice: ${finalVoiceId}, streaming: ${capabilities.hasStreaming}, language: ${language || 'en'}`);
+  // console.log(`[TTS] Speech speed: ${settings.speechSpeed}x`);
+  // console.log(`[TTS] Text to speak (first 200 chars): "${text.substring(0, 200)}..."`);
+  // console.log(`[TTS] Text length: ${text.length} characters`);
 
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -119,7 +125,7 @@ export async function speakTextStream(
 
   if (!res.ok) {
     const err = await res.text().catch(() => '');
-    console.error('[TTS] Error response:', res.status, err);
+    // console.error('[TTS] Error response:', res.status, err);
     
     // Provide helpful error messages
     if (res.status === 401) {
@@ -128,7 +134,7 @@ export async function speakTextStream(
       throw new Error('This feature is not enabled for your API key. Please enable "Text to Speech: Access" in your ElevenLabs API key settings.');
     } else if (res.status === 422 && err.includes('model')) {
       // Model not available - try fallback
-      console.warn('[TTS] Model not available, trying basic model...');
+      // console.warn('[TTS] Model not available, trying basic model...');
       throw new Error('The selected voice model is not available with your API key. Please enable multilingual or streaming features in your API key settings.');
     }
     
@@ -136,7 +142,7 @@ export async function speakTextStream(
   }
 
   // Collect all chunks then play — avoids MediaSource API (not available in extensions)
-  console.log('[TTS] Starting to collect audio chunks...');
+  // console.log('[TTS] Starting to collect audio chunks...');
   const reader = res.body!.getReader();
   const chunks: Uint8Array[] = [];
 
@@ -146,10 +152,10 @@ export async function speakTextStream(
     if (value) chunks.push(value);
   }
 
-  console.log('[TTS] Collected', chunks.length, 'audio chunks');
+  // console.log('[TTS] Collected', chunks.length, 'audio chunks');
   const blob = new Blob(chunks, { type: 'audio/mpeg' });
   const url = URL.createObjectURL(blob);
-  console.log('[TTS] Created audio blob, size:', blob.size, 'bytes');
+  // console.log('[TTS] Created audio blob, size:', blob.size, 'bytes');
 
   const audio = new Audio(url);
   currentAudio = audio;
@@ -168,11 +174,7 @@ export async function speakTextStream(
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
       
-      console.log('[TTS] Available audio outputs:', audioOutputs.map(d => ({
-        deviceId: d.deviceId,
-        label: d.label,
-        groupId: d.groupId
-      })));
+      // console.log('[TTS] Available audio outputs:', audioOutputs.map(d => ({ deviceId: d.deviceId, label: d.label, groupId: d.groupId })));
       
       // Try to find Bluetooth device (look for common Bluetooth keywords)
       const bluetoothDevice = audioOutputs.find(d => 
@@ -185,35 +187,35 @@ export async function speakTextStream(
       if (bluetoothDevice && bluetoothDevice.deviceId) {
         // Use the Bluetooth device
         await (audio as any).setSinkId(bluetoothDevice.deviceId);
-        console.log('[TTS] Audio routed to Bluetooth device:', bluetoothDevice.label);
+        // console.log('[TTS] Audio routed to Bluetooth device:', bluetoothDevice.label);
         audioDeviceSet = true;
       } else {
         // Use default device (first in list or 'default')
         const defaultDevice = audioOutputs.find(d => d.deviceId === 'default') || audioOutputs[0];
         if (defaultDevice) {
           await (audio as any).setSinkId(defaultDevice.deviceId);
-          console.log('[TTS] Audio routed to default device:', defaultDevice.label);
+          // console.log('[TTS] Audio routed to default device:', defaultDevice.label);
           audioDeviceSet = true;
         } else {
-          console.warn('[TTS] No audio output devices found, using browser default');
+          // console.warn('[TTS] No audio output devices found, using browser default');
         }
       }
     } else {
-      console.warn('[TTS] setSinkId not supported in this browser');
+      // console.warn('[TTS] setSinkId not supported in this browser');
     }
   } catch (err) {
-    console.error('[TTS] Could not set audio output device:', err);
+    // console.error('[TTS] Could not set audio output device:', err);
     // Continue anyway - audio will play through browser's default
   }
 
-  console.log('[TTS] Audio object created, calling onAudioReady callback...');
+  // console.log('[TTS] Audio object created, calling onAudioReady callback...');
   
   // Call the callback when audio is ready to play (before actually playing)
   if (onAudioReady) {
     onAudioReady();
   }
 
-  console.log('[TTS] Starting audio playback...');
+  // console.log('[TTS] Starting audio playback...');
   
   // Add a retry mechanism for audio playback
   let playAttempts = 0;
@@ -222,29 +224,22 @@ export async function speakTextStream(
   const attemptPlay = async (): Promise<void> => {
     return new Promise<void>((resolve, reject) => {
       playAttempts++;
-      console.log(`[TTS] Play attempt ${playAttempts}/${maxAttempts}`);
+      // console.log(`[TTS] Play attempt ${playAttempts}/${maxAttempts}`);
       
       audio.onended = () => {
-        console.log('[TTS] Audio playback ended');
+        // console.log('[TTS] Audio playback ended');
         URL.revokeObjectURL(url);
         currentAudio = null;
         resolve();
       };
       
       audio.onerror = async (e) => {
-        console.error('[TTS] Audio playback error:', e);
-        console.error('[TTS] Audio error details:', {
-          error: audio.error,
-          errorCode: audio.error?.code,
-          errorMessage: audio.error?.message,
-          networkState: audio.networkState,
-          readyState: audio.readyState,
-          src: audio.src
-        });
+        // console.error('[TTS] Audio playback error:', e);
+        // console.error('[TTS] Audio error details:', { error: audio.error, errorCode: audio.error?.code, errorMessage: audio.error?.message, networkState: audio.networkState, readyState: audio.readyState, src: audio.src });
         
         // If we haven't exceeded max attempts and device was set, try without device routing
         if (playAttempts < maxAttempts && audioDeviceSet) {
-          console.warn('[TTS] Retrying without device routing...');
+          // console.warn('[TTS] Retrying without device routing...');
           try {
             // Reset to default device
             if ('setSinkId' in audio) {
@@ -266,9 +261,9 @@ export async function speakTextStream(
       };
       
       audio.play().then(() => {
-        console.log('[TTS] Audio play() started successfully');
+        // console.log('[TTS] Audio play() started successfully');
       }).catch((playErr) => {
-        console.error('[TTS] Audio play() failed:', playErr);
+        // console.error('[TTS] Audio play() failed:', playErr);
         URL.revokeObjectURL(url);
         currentAudio = null;
         reject(new Error(`Audio play failed: ${playErr.message}`));
@@ -283,23 +278,23 @@ export async function speakTextStream(
  * Determine the best model based on capabilities and language
  */
 function getModelForCapabilities(capabilities: any, language?: string): string {
-  console.log('[TTS] Model selection - Language:', language, 'Has multilingual:', capabilities.hasMultilingual, 'Has streaming:', capabilities.hasStreaming);
+  // console.log('[TTS] Model selection - Language:', language, 'Has multilingual:', capabilities.hasMultilingual, 'Has streaming:', capabilities.hasStreaming);
   
   // If multilingual is needed and available
   if (language && language !== 'en' && capabilities.hasMultilingual) {
     const model = capabilities.hasStreaming ? 'eleven_turbo_v2_5' : 'eleven_multilingual_v2';
-    console.log('[TTS] Using multilingual model:', model);
+    // console.log('[TTS] Using multilingual model:', model);
     return model;
   }
   
   // If streaming is available (Creator+ tier)
   if (capabilities.hasStreaming) {
-    console.log('[TTS] Using streaming model: eleven_turbo_v2');
+    // console.log('[TTS] Using streaming model: eleven_turbo_v2');
     return 'eleven_turbo_v2';
   }
   
   // Free tier - use basic model
-  console.log('[TTS] Using basic model: eleven_monolingual_v1');
+  // console.log('[TTS] Using basic model: eleven_monolingual_v1');
   return 'eleven_monolingual_v1';
 }
 

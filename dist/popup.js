@@ -34,9 +34,7 @@
           [_WalletStorage.WALLET_ADDRESS_KEY]: address,
           [_WalletStorage.CONNECTION_TIMESTAMP_KEY]: data2.connectionTimestamp
         });
-        console.log("Wallet address stored successfully:", truncateAddress(address));
       } catch (error) {
-        console.error("Failed to store wallet address:", error);
         throw error;
       }
     }
@@ -51,13 +49,11 @@
           return null;
         }
         if (!isValidEthereumAddress(address)) {
-          console.warn("Invalid stored address found, clearing storage");
           await this.clearWalletData();
           return null;
         }
         return address;
       } catch (error) {
-        console.error("Failed to retrieve wallet address:", error);
         return null;
       }
     }
@@ -70,9 +66,7 @@
           _WalletStorage.WALLET_ADDRESS_KEY,
           _WalletStorage.CONNECTION_TIMESTAMP_KEY
         ]);
-        console.log("Wallet data cleared successfully");
       } catch (error) {
-        console.error("Failed to clear wallet data:", error);
         throw error;
       }
     }
@@ -84,7 +78,6 @@
         const result = await chrome.storage.local.get([_WalletStorage.CONNECTION_TIMESTAMP_KEY]);
         return result[_WalletStorage.CONNECTION_TIMESTAMP_KEY] || null;
       } catch (error) {
-        console.error("Failed to retrieve connection timestamp:", error);
         return null;
       }
     }
@@ -151,20 +144,15 @@
   }
   async function fetchDAOProposals(spaceKey, skip = 0) {
     const spaces = DAO_FALLBACKS[spaceKey] || [spaceKey];
-    console.log("DAO:", spaceKey, "\u2192 trying spaces:", spaces);
     for (const space of spaces) {
       try {
         const data2 = await fetchProposalsBySpace(space, skip);
         if (Array.isArray(data2) && data2.length > 0) {
-          console.log(`Proposals fetched from ${space}:`, data2.length);
           return data2;
         }
-        console.warn(`Empty response from ${space}, trying next...`);
       } catch (err) {
-        console.warn(`Failed for ${space}:`, err);
       }
     }
-    console.warn(`All fallbacks exhausted for ${spaceKey}`);
     return [];
   }
 
@@ -362,8 +350,6 @@ ${proposalBody}`
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-      console.log(`[Mistral] Attempt ${attempt}/${MAX_RETRIES} \u2014 sending request to:`, MISTRAL_ENDPOINT);
-      console.log("[Mistral] Request body:", requestBody);
       try {
         const response = await fetch(MISTRAL_ENDPOINT, {
           method: "POST",
@@ -375,34 +361,27 @@ ${proposalBody}`
           body: requestBody
         });
         clearTimeout(timeoutId);
-        console.log(`[Mistral] Response status: ${response.status} ${response.statusText}`);
         if ((response.status === 503 || response.status === 429) && attempt < MAX_RETRIES) {
           const delay = RETRY_DELAY_MS * attempt;
-          console.warn(`[Mistral] ${response.status} received, retrying in ${delay}ms...`);
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
         if (!response.ok) {
           const errorBody = await response.text().catch(() => "(could not read error body)");
-          console.error(`[Mistral] Error response body:`, errorBody);
           throw new Error(`Mistral API error: ${response.status} \u2014 ${errorBody}`);
         }
         const json = await response.json();
-        console.log("[Mistral] Response JSON:", JSON.stringify(json, null, 2));
         const text = json?.choices?.[0]?.message?.content;
         if (!text) {
-          console.error("[Mistral] Empty text in response. Full JSON:", json);
           throw new Error("Mistral returned empty response");
         }
         return text.trim();
       } catch (err) {
         clearTimeout(timeoutId);
         if (err.name === "AbortError") {
-          console.error("[Mistral] Request timed out");
           throw new Error("Request timed out");
         }
         if (attempt < MAX_RETRIES && !err.message?.includes("Mistral API error")) {
-          console.warn(`[Mistral] Attempt ${attempt} failed: ${err.message}, retrying...`);
           await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
           continue;
         }
@@ -618,7 +597,6 @@ ${proposalBody}`
     voiceLimit: 1
   };
   async function detectElevenLabsCapabilities(apiKey) {
-    console.log("[ElevenLabs] Testing API key capabilities...");
     const capabilities = {
       tier: "creator",
       // We don't care about tier anymore
@@ -631,7 +609,6 @@ ${proposalBody}`
       charactersUsed: 0,
       voiceLimit: 30
     };
-    console.log("[ElevenLabs] Assuming all features available - will check on actual use");
     return capabilities;
   }
   async function saveCapabilities(capabilities) {
@@ -674,7 +651,6 @@ ${proposalBody}`
       const data2 = await response.json();
       return data2.voices || [];
     } catch (error) {
-      console.error("[Voice Settings] Error fetching voices:", error);
       return [];
     }
   }
@@ -721,11 +697,12 @@ ${proposalBody}`
       "ar": "pqHfZKP75CvOlQylNhV4"
       // Arabic voice (Bill - native Arabic)
     };
-    if (language && language !== "en" && languageVoiceMap[language]) {
-      console.log(`[TTS] Using native ${language} voice (user selection ignored for non-English):`, languageVoiceMap[language]);
+    if (language && language !== "en" && language !== "hinglish" && languageVoiceMap[language]) {
       return languageVoiceMap[language];
     }
-    console.log(`[TTS] Using user-selected voice for English:`, selectedVoiceId);
+    if (language === "hinglish" && languageVoiceMap["hi"]) {
+      return languageVoiceMap["hi"];
+    }
     return selectedVoiceId;
   }
   async function speakTextStream(text, apiKey, voiceId, language, onAudioReady) {
@@ -736,10 +713,6 @@ ${proposalBody}`
     const finalVoiceId = getVoiceForLanguage(language || "en", selectedVoiceId);
     const model = getModelForCapabilities(capabilities, language);
     const endpoint = capabilities.hasStreaming ? `${TTS_BASE}/${finalVoiceId}/stream` : `${TTS_BASE}/${finalVoiceId}`;
-    console.log(`[TTS] Using model: ${model}, voice: ${finalVoiceId}, streaming: ${capabilities.hasStreaming}, language: ${language || "en"}`);
-    console.log(`[TTS] Speech speed: ${settings.speechSpeed}x`);
-    console.log(`[TTS] Text to speak (first 200 chars): "${text.substring(0, 200)}..."`);
-    console.log(`[TTS] Text length: ${text.length} characters`);
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -759,18 +732,15 @@ ${proposalBody}`
     });
     if (!res.ok) {
       const err = await res.text().catch(() => "");
-      console.error("[TTS] Error response:", res.status, err);
       if (res.status === 401) {
         throw new Error("API key invalid. Please check your ElevenLabs API key.");
       } else if (res.status === 403) {
         throw new Error('This feature is not enabled for your API key. Please enable "Text to Speech: Access" in your ElevenLabs API key settings.');
       } else if (res.status === 422 && err.includes("model")) {
-        console.warn("[TTS] Model not available, trying basic model...");
         throw new Error("The selected voice model is not available with your API key. Please enable multilingual or streaming features in your API key settings.");
       }
       throw new Error(`TTS error ${res.status}: ${err}`);
     }
-    console.log("[TTS] Starting to collect audio chunks...");
     const reader = res.body.getReader();
     const chunks = [];
     while (true) {
@@ -778,10 +748,8 @@ ${proposalBody}`
       if (done) break;
       if (value) chunks.push(value);
     }
-    console.log("[TTS] Collected", chunks.length, "audio chunks");
     const blob = new Blob(chunks, { type: "audio/mpeg" });
     const url = URL.createObjectURL(blob);
-    console.log("[TTS] Created audio blob, size:", blob.size, "bytes");
     const audio = new Audio(url);
     currentAudio = audio;
     if (settings.speechSpeed !== 1) {
@@ -792,63 +760,39 @@ ${proposalBody}`
       if ("setSinkId" in audio) {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioOutputs = devices.filter((d) => d.kind === "audiooutput");
-        console.log("[TTS] Available audio outputs:", audioOutputs.map((d) => ({
-          deviceId: d.deviceId,
-          label: d.label,
-          groupId: d.groupId
-        })));
         const bluetoothDevice = audioOutputs.find(
           (d) => d.label.toLowerCase().includes("bluetooth") || d.label.toLowerCase().includes("airpods") || d.label.toLowerCase().includes("headphones") || d.label.toLowerCase().includes("headset")
         );
         if (bluetoothDevice && bluetoothDevice.deviceId) {
           await audio.setSinkId(bluetoothDevice.deviceId);
-          console.log("[TTS] Audio routed to Bluetooth device:", bluetoothDevice.label);
           audioDeviceSet = true;
         } else {
           const defaultDevice = audioOutputs.find((d) => d.deviceId === "default") || audioOutputs[0];
           if (defaultDevice) {
             await audio.setSinkId(defaultDevice.deviceId);
-            console.log("[TTS] Audio routed to default device:", defaultDevice.label);
             audioDeviceSet = true;
           } else {
-            console.warn("[TTS] No audio output devices found, using browser default");
           }
         }
       } else {
-        console.warn("[TTS] setSinkId not supported in this browser");
       }
     } catch (err) {
-      console.error("[TTS] Could not set audio output device:", err);
     }
-    console.log("[TTS] Audio object created, calling onAudioReady callback...");
     if (onAudioReady) {
       onAudioReady();
     }
-    console.log("[TTS] Starting audio playback...");
     let playAttempts = 0;
     const maxAttempts = 3;
     const attemptPlay = async () => {
       return new Promise((resolve, reject) => {
         playAttempts++;
-        console.log(`[TTS] Play attempt ${playAttempts}/${maxAttempts}`);
         audio.onended = () => {
-          console.log("[TTS] Audio playback ended");
           URL.revokeObjectURL(url);
           currentAudio = null;
           resolve();
         };
         audio.onerror = async (e) => {
-          console.error("[TTS] Audio playback error:", e);
-          console.error("[TTS] Audio error details:", {
-            error: audio.error,
-            errorCode: audio.error?.code,
-            errorMessage: audio.error?.message,
-            networkState: audio.networkState,
-            readyState: audio.readyState,
-            src: audio.src
-          });
           if (playAttempts < maxAttempts && audioDeviceSet) {
-            console.warn("[TTS] Retrying without device routing...");
             try {
               if ("setSinkId" in audio) {
                 await audio.setSinkId("");
@@ -867,9 +811,7 @@ ${proposalBody}`
           }
         };
         audio.play().then(() => {
-          console.log("[TTS] Audio play() started successfully");
         }).catch((playErr) => {
-          console.error("[TTS] Audio play() failed:", playErr);
           URL.revokeObjectURL(url);
           currentAudio = null;
           reject(new Error(`Audio play failed: ${playErr.message}`));
@@ -879,17 +821,13 @@ ${proposalBody}`
     await attemptPlay();
   }
   function getModelForCapabilities(capabilities, language) {
-    console.log("[TTS] Model selection - Language:", language, "Has multilingual:", capabilities.hasMultilingual, "Has streaming:", capabilities.hasStreaming);
     if (language && language !== "en" && capabilities.hasMultilingual) {
       const model = capabilities.hasStreaming ? "eleven_turbo_v2_5" : "eleven_multilingual_v2";
-      console.log("[TTS] Using multilingual model:", model);
       return model;
     }
     if (capabilities.hasStreaming) {
-      console.log("[TTS] Using streaming model: eleven_turbo_v2");
       return "eleven_turbo_v2";
     }
-    console.log("[TTS] Using basic model: eleven_monolingual_v1");
     return "eleven_monolingual_v1";
   }
 
@@ -1229,7 +1167,6 @@ ${proposalBody}`
     const sample = text.substring(0, 200).toLowerCase();
     if (text.length >= 20) {
       const francResult = franc(text, { minLength: 10 });
-      console.log("[Language Detection] franc-min result:", francResult);
       const francMap = {
         "eng": "en",
         "hin": "hi",
@@ -1248,7 +1185,6 @@ ${proposalBody}`
         "arb": "ar"
       };
       if (francResult && francResult !== "und" && francMap[francResult]) {
-        console.log("[Language Detection] Using franc-min detection:", francMap[francResult]);
         return francMap[francResult];
       }
     }
@@ -1256,7 +1192,6 @@ ${proposalBody}`
       return "hi";
     }
     if (/(mujhe|tumhe|kya|hai|hain|aap|tum|yeh|yah|kaise|kahan|kyun|kab|samajh|samjh|proposal|karta|karti|karte|chahiye|chahte|batao|bata|dijiye|please|kar|karo|hoga|hogi|honge|tha|thi|the|nahi|nahin|haan|ji|bhi|aur|ya|lekin|par|ke|ki|ka|ko|se|me|mein|pe|tak|bahut|bohot|thoda|zyada|jyada)/i.test(sample)) {
-      console.log("[Language Detection] Detected Romanized Hindi/Hinglish");
       return "hi";
     }
     if (/[\u4E00-\u9FFF]/.test(text)) {
@@ -1599,13 +1534,12 @@ ${proposal.bodyFull || proposal.bodyDetail}`;
     conversationHistory = [];
     currentProposalContext = "";
   }
-  async function askAboutProposal(question, mistralApiKey) {
+  async function askAboutProposal(question, mistralApiKey, forcedLanguage) {
     if (!currentProposalContext) {
       return "No proposal loaded. Please open a proposal first.";
     }
-    const detectedLanguage = detectLanguage(question);
+    const detectedLanguage = forcedLanguage || detectLanguage(question);
     const languageName = getLanguageName2(detectedLanguage);
-    console.log("[Voice Conversation] Detected question language:", detectedLanguage, "(" + languageName + ")");
     let languageInstruction = "";
     let ttsInstructions = "";
     if (detectedLanguage === "en") {
@@ -1614,6 +1548,12 @@ ${proposal.bodyFull || proposal.bodyDetail}`;
 - Write numbers in words when they are small (1-20), otherwise use digits that can be read naturally.
 - Write currency amounts in a speakable way: "$1000" should be "one thousand dollars".
 - Avoid symbols like $, %, #, @, &, etc. Write them out in words.`;
+    } else if (detectedLanguage === "hinglish") {
+      languageInstruction = 'The user wants a Hinglish response. Respond in Hinglish \u2014 a natural mix of Hindi and English words as spoken in India. Use Roman script (not Devanagari). Mix Hindi and English naturally like a native Hinglish speaker would. For example: "Yeh proposal basically ek naya system introduce karta hai jo governance ko improve karega."';
+      ttsInstructions = `
+- Write in Roman script Hinglish (mix of Hindi and English words).
+- Numbers can be in English digits or Hindi words, whichever sounds more natural.
+- Keep it conversational and natural-sounding.`;
     } else {
       languageInstruction = `The user is asking in ${languageName}. You MUST respond entirely in ${languageName}. Do NOT mix English words or phrases. Do NOT use English examples like "Think of it like...". Use ${languageName} for everything including examples and analogies.`;
       if (detectedLanguage === "hi") {
@@ -1691,9 +1631,7 @@ ${currentProposalContext}`;
     const rawResponse = await callMistral(messages, mistralApiKey, 400);
     const cleanResponse = stripMarkdownForSpeech(rawResponse);
     const responseLanguage = detectLanguage(cleanResponse);
-    console.log("[Voice Conversation] Detected response language:", responseLanguage);
     const normalizedResponse = normalizeForSpeech(cleanResponse, responseLanguage);
-    console.log("[Voice Conversation] Normalized response preview:", normalizedResponse.substring(0, 100) + "...");
     conversationHistory.push({ role: "user", content: question });
     conversationHistory.push({ role: "assistant", content: normalizedResponse });
     if (conversationHistory.length > 8) {
@@ -1703,7 +1641,7 @@ ${currentProposalContext}`;
   }
 
   // src/snapshotVote.ts
-  var SIGN_PAGE_URL = "http://localhost:3001/sign.html";
+  var SIGN_PAGE_URL = "https://codevesh090.github.io/GovernCrypto-extension/sign.html";
   function castVoteViaTab(proposalId, choiceIndex) {
     return new Promise((resolve, reject) => {
       const url = `${SIGN_PAGE_URL}?proposalId=${encodeURIComponent(proposalId)}&choice=${choiceIndex}`;
@@ -1717,7 +1655,7 @@ ${currentProposalContext}`;
         reject(new Error("Vote signing timed out."));
       }, 3e5);
       function onMessage(event) {
-        if (event.origin !== "http://localhost:3001") return;
+        if (event.origin !== "https://codevesh090.github.io") return;
         const msg = event.data;
         if (!msg) return;
         if (msg.type === "VOTE_SUCCESS" && msg.proposalId === proposalId) {
@@ -1851,7 +1789,6 @@ ${currentProposalContext}`;
       }
       osc.onended = () => ctx.close();
     } catch (error) {
-      console.error("[Sound Effects] Error playing sound:", error);
     }
   }
   function playChord(ctx, frequencies, volume, duration) {
@@ -1892,16 +1829,13 @@ ${currentProposalContext}`;
       const result = await chrome.storage.local.get(STORAGE_KEY);
       return result[STORAGE_KEY] || "dark";
     } catch (err) {
-      console.error("[Theme] Error getting theme:", err);
       return "dark";
     }
   }
   async function saveTheme(theme) {
     try {
       await chrome.storage.local.set({ [STORAGE_KEY]: theme });
-      console.log("[Theme] Saved theme:", theme);
     } catch (err) {
-      console.error("[Theme] Error saving theme:", err);
     }
   }
   function applyTheme(theme) {
@@ -1911,13 +1845,11 @@ ${currentProposalContext}`;
     if (walletImg) {
       walletImg.src = theme === "light" ? "../../icons/wallet.png" : "../../icons/wallet-dark.png";
     }
-    console.log("[Theme] Applied theme:", theme);
   }
 
   // src/popup.ts
-  console.log("Snapshot Governance Extension - Popup loaded");
-  var HOSTED_PAGE_URL = "http://localhost:3000";
-  var TRUSTED_ORIGIN = "http://localhost:3000";
+  var HOSTED_PAGE_URL = "https://codevesh090.github.io/GovernCrypto-extension/";
+  var TRUSTED_ORIGIN = "https://codevesh090.github.io";
   function updateOfflineBanner() {
     const banner = document.getElementById("offline-banner");
     if (!banner) return;
@@ -1956,6 +1888,7 @@ ${currentProposalContext}`;
     hasMoreProposals: true
   };
   var isLoadingProposals = false;
+  var forcedVoiceLanguage = null;
   var lastFetchTime = 0;
   var lastFetchedTab = "";
   var CACHE_TTL_MS2 = 60 * 60 * 1e3;
@@ -2050,15 +1983,12 @@ ${currentProposalContext}`;
     }
   }
   window.addEventListener("message", async (event) => {
-    console.log("Received message:", event.data, "from:", event.origin);
     if (event.origin !== TRUSTED_ORIGIN) {
-      console.warn("Ignored message from untrusted origin:", event.origin);
       return;
     }
     if (!isConnecting) return;
     if (event.data?.type === "WALLET_CONNECTED") {
       const address = event.data.address;
-      console.log("Wallet connected! Address:", address);
       if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
         showError("Invalid wallet address received.");
         return;
@@ -2072,7 +2002,6 @@ ${currentProposalContext}`;
       }
     }
     if (event.data?.type === "CONNECTION_ERROR") {
-      console.log("Connection error received");
       showError(event.data.error || "Connection failed. Please try again.");
     }
   });
@@ -2080,7 +2009,6 @@ ${currentProposalContext}`;
     if (areaName === "local" && changes.connectedAddress) {
       const newAddress = changes.connectedAddress.newValue;
       if (newAddress) {
-        console.log("Wallet connected via storage change:", newAddress);
         isConnecting = false;
         appState.address = newAddress;
         if (appState.screen === "connect") {
@@ -2143,7 +2071,6 @@ ${currentProposalContext}`;
         navigate("connect");
       }, 1500);
     } catch (error) {
-      console.error("[Setup] Error saving keys:", error);
       showSetupError("Failed to save API keys. Please try again.");
       await playIfEnabled("error");
     }
@@ -2559,7 +2486,6 @@ ${currentProposalContext}`;
       tabEl.addEventListener("click", async (e) => {
         const tab = e.currentTarget.dataset.tab;
         await playIfEnabled("click");
-        console.log("[Tab Click] tab:", tab, "| currentTab:", appState.activeTab);
         if (appState.activeTab === tab) return;
         appState.activeTab = tab;
         appState.proposals = [];
@@ -2600,7 +2526,6 @@ ${currentProposalContext}`;
   }
   async function loadProposalsByTab(forceReload = false) {
     if (isLoadingProposals) {
-      console.log("[Load Proposals] Already loading, skipping...");
       return;
     }
     if (!navigator.onLine) {
@@ -2622,11 +2547,6 @@ ${currentProposalContext}`;
     }
     const reloadBtn = document.getElementById("btn-reload-proposals");
     reloadBtn?.classList.add("loading");
-    console.log("[Load Proposals] Fetching proposals...", {
-      tab: appState.activeTab,
-      skip: appState.proposalsSkip,
-      currentCount: appState.proposals.length
-    });
     try {
       let raw;
       if (appState.activeTab === "all") {
@@ -2634,17 +2554,13 @@ ${currentProposalContext}`;
       } else {
         raw = await fetchDAOProposals(appState.activeTab, appState.proposalsSkip);
       }
-      console.log("[Load Proposals] Fetched:", raw.length, "proposals");
       const proposals = raw.map(transformProposal).filter(Boolean);
       const expectedBatchSize = 40;
       appState.hasMoreProposals = proposals.length >= expectedBatchSize;
-      console.log("[Load Proposals] Has more proposals:", appState.hasMoreProposals);
       if (appState.proposalsSkip > 0) {
         appState.proposals = [...appState.proposals, ...proposals];
-        console.log("[Load Proposals] Appended. Total now:", appState.proposals.length);
       } else {
         appState.proposals = proposals;
-        console.log("[Load Proposals] Replaced. Total now:", appState.proposals.length);
       }
       lastFetchTime = Date.now();
       lastFetchedTab = appState.activeTab;
@@ -2664,7 +2580,6 @@ ${currentProposalContext}`;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load proposals";
       showProposalsError(msg);
-      console.error("[Load Proposals] Error:", err);
     } finally {
       isLoadingProposals = false;
       reloadBtn?.classList.remove("loading");
@@ -2726,7 +2641,6 @@ ${currentProposalContext}`;
         summary = await generateSummary(proposal.bodyFull, apiKey, language);
         await cacheSummary(proposal.id, summary, language);
       } catch (err) {
-        console.error("AI Summary generation failed:", err);
         await holdMinLoader(loadStart);
         showSummaryError(getFallbackSummary(proposal.bodyFull));
         return;
@@ -2806,7 +2720,6 @@ ${currentProposalContext}`;
         const result = event.results[i];
         for (let j = 0; j < result.length; j++) {
           const text = result[j].transcript.toLowerCase().trim();
-          console.log("[Wake Word] Heard (alternative " + j + "):", text, "confidence:", result[j].confidence);
           const heyVariants = [
             "hey",
             "hay",
@@ -2818,7 +2731,6 @@ ${currentProposalContext}`;
           ];
           const hasWakeWord = heyVariants.some((variant) => text === variant || text.startsWith(variant + " "));
           if (hasWakeWord && voiceState === "idle") {
-            console.log('[Wake Word] Wake word "hey" detected! Triggering Ask AI...');
             handleVoiceButtonClick();
             return;
           }
@@ -2834,22 +2746,18 @@ ${currentProposalContext}`;
       }
     };
     wakeWordRecognition.onerror = (e) => {
-      console.log("[Wake Word] Error:", e.error);
       if (e.error === "no-speech" || e.error === "aborted" || e.error === "audio-capture") {
         return;
       }
-      console.error("[Wake Word] Unexpected error:", e.error);
       wakeWordRecognition = null;
     };
     try {
       wakeWordRecognition.start();
-      console.log("[Wake Word] Listener started");
       const statusEl = document.getElementById("voice-status");
       if (statusEl && voiceState === "idle") {
         statusEl.textContent = 'Say "Hey" to start or click Ask AI';
       }
     } catch (e) {
-      console.log("[Wake Word] Failed to start:", e);
       wakeWordRecognition = null;
     }
   }
@@ -2870,13 +2778,10 @@ ${currentProposalContext}`;
     const settings = await getVoiceSettings();
     const capabilities = await getCapabilities();
     const elevenKey = await getElevenLabsApiKey();
-    console.log("[Voice Settings] Opening voice settings...");
     if (elevenKey) {
       try {
         availableVoices = await fetchAvailableVoices(elevenKey);
-        console.log("[Voice Settings] Fetched voices:", availableVoices.length);
       } catch (error) {
-        console.error("[Voice Settings] Failed to fetch voices:", error);
         availableVoices = [];
         const upgradeHint = document.getElementById("voice-upgrade-hint");
         if (upgradeHint) {
@@ -3057,9 +2962,7 @@ ${currentProposalContext}`;
     try {
       transcript = await promise;
     } catch (err) {
-      console.error("[Voice] Recording failed:", err);
       if (err?.message && err.message.includes("No speech detected")) {
-        console.log("[Voice] No speech detected, returning to idle");
         setVoiceState("idle");
         return;
       }
@@ -3079,48 +2982,87 @@ ${currentProposalContext}`;
     setVoiceState("thinking");
     let answer;
     try {
-      answer = await askAboutProposal(transcript, mistralKey);
-      console.log("[Voice] AI response received, length:", answer.length);
+      answer = await askAboutProposal(transcript, mistralKey, forcedVoiceLanguage || void 0);
     } catch (err) {
-      console.error("[Voice] Mistral failed:", err);
       showVoiceError("AI response failed. Try again.");
       await playIfEnabled("error");
       return;
     }
-    const detectedLanguage = detectLanguage(answer);
-    console.log("[Voice] Detected language from AI response:", detectedLanguage);
-    console.log("[Voice] AI response preview:", answer.substring(0, 100) + "...");
-    console.log("[Voice] ===== FULL TEXT BEING SENT TO TTS =====");
-    console.log("[Voice] Text:", answer);
-    console.log("[Voice] Text length:", answer.length, "characters");
-    console.log("[Voice] ==========================================");
+    const detectedLanguage = forcedVoiceLanguage || detectLanguage(answer);
+    if (forcedVoiceLanguage) {
+    }
     try {
       const settings = await getVoiceSettings();
-      console.log("[Voice] Starting TTS with language:", detectedLanguage, "voice:", settings.selectedVoiceId);
       await speakTextStream(
         answer,
         elevenKey,
         settings.selectedVoiceId,
         detectedLanguage,
         () => {
-          console.log("[Voice] Audio ready, changing state to speaking");
           setVoiceState("speaking");
         }
       );
-      console.log("[Voice] TTS completed successfully");
     } catch (err) {
-      console.error("[Voice] TTS failed:", err);
-      console.error("[Voice] TTS error details:", {
-        message: err?.message,
-        stack: err?.stack,
-        detectedLanguage,
-        answerLength: answer?.length
-      });
       showVoiceError(err?.message || "Could not play audio response.");
       await playIfEnabled("error");
       return;
     }
     setVoiceState("idle");
+  }
+  var FORCE_LANG_OPTIONS = [
+    { code: "en", flag: "\u{1F1EC}\u{1F1E7}", name: "English" },
+    { code: "hi", flag: "\u{1F1EE}\u{1F1F3}", name: "Hindi" },
+    { code: "hinglish", flag: "\u{1F1EE}\u{1F1F3}", name: "Hinglish" },
+    { code: "es", flag: "\u{1F1EA}\u{1F1F8}", name: "Spanish" },
+    { code: "fr", flag: "\u{1F1EB}\u{1F1F7}", name: "French" },
+    { code: "de", flag: "\u{1F1E9}\u{1F1EA}", name: "German" },
+    { code: "pt", flag: "\u{1F1E7}\u{1F1F7}", name: "Portuguese" },
+    { code: "zh", flag: "\u{1F1E8}\u{1F1F3}", name: "Chinese" },
+    { code: "ja", flag: "\u{1F1EF}\u{1F1F5}", name: "Japanese" },
+    { code: "ar", flag: "\u{1F1F8}\u{1F1E6}", name: "Arabic" }
+  ];
+  function setupForceLangButton() {
+    const btn = document.getElementById("btn-force-lang");
+    const dropdown = document.getElementById("force-lang-dropdown");
+    if (!btn || !dropdown) return;
+    dropdown.innerHTML = "";
+    FORCE_LANG_OPTIONS.forEach((lang) => {
+      const opt = document.createElement("div");
+      opt.className = "force-lang-option";
+      opt.dataset.code = lang.code;
+      opt.innerHTML = `<span>${lang.flag}</span><span>${lang.name}</span>`;
+      dropdown.appendChild(opt);
+    });
+    const clearOpt = document.createElement("div");
+    clearOpt.className = "force-lang-option clear-option";
+    clearOpt.dataset.code = "";
+    clearOpt.innerHTML = `<span>\u2715</span><span>Auto-detect</span>`;
+    dropdown.appendChild(clearOpt);
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle("show");
+    });
+    dropdown.addEventListener("click", (e) => {
+      const target = e.target;
+      const opt = target.closest(".force-lang-option");
+      if (!opt) return;
+      const code = opt.dataset.code || null;
+      forcedVoiceLanguage = code || null;
+      dropdown.querySelectorAll(".force-lang-option").forEach((o) => o.classList.remove("selected"));
+      if (code) {
+        opt.classList.add("selected");
+        btn.classList.add("active");
+        const lang = FORCE_LANG_OPTIONS.find((l) => l.code === code);
+        btn.textContent = lang?.flag || "\u{1F310}";
+      } else {
+        btn.classList.remove("active");
+        btn.textContent = "\u{1F310}";
+      }
+      dropdown.classList.remove("show");
+    });
+    document.addEventListener("click", () => {
+      dropdown.classList.remove("show");
+    });
   }
   async function initializeTheme() {
     const savedTheme = await getTheme();
@@ -3264,6 +3206,7 @@ ${currentProposalContext}`;
       loadProposalsByTab();
     });
     document.getElementById("btn-voice").addEventListener("click", handleVoiceButtonClick);
+    setupForceLangButton();
     document.getElementById("btn-voice-settings").addEventListener("click", openVoiceSettings);
     document.getElementById("btn-close-voice-settings").addEventListener("click", closeVoiceSettings);
     document.getElementById("btn-save-voice-settings").addEventListener("click", saveVoiceSettingsFromModal);
@@ -3345,13 +3288,10 @@ ${currentProposalContext}`;
   function setupInfiniteScroll() {
     const proposalsList = document.getElementById("proposals-list");
     if (!proposalsList) {
-      console.warn("[Infinite Scroll] proposals-list element not found");
       return;
     }
-    console.log("[Infinite Scroll] Setting up scroll listener on proposals-list");
     proposalsList.removeEventListener("scroll", handleProposalsScroll);
     proposalsList.addEventListener("scroll", handleProposalsScroll);
-    console.log("[Infinite Scroll] Scroll listener attached successfully");
   }
   async function handleProposalsScroll(e) {
     const target = e.target;
@@ -3359,18 +3299,8 @@ ${currentProposalContext}`;
     const scrollTop = target.scrollTop;
     const clientHeight = target.clientHeight;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    console.log("[Infinite Scroll] Scroll detected:", {
-      scrollHeight,
-      scrollTop,
-      clientHeight,
-      distanceFromBottom,
-      isLoading: isLoadingProposals,
-      hasMore: appState.hasMoreProposals,
-      currentSkip: appState.proposalsSkip
-    });
     const scrolledToBottom = distanceFromBottom < 200;
     if (scrolledToBottom && !isLoadingProposals && appState.hasMoreProposals) {
-      console.log("[Infinite Scroll] Loading more proposals...");
       appState.proposalsSkip += 40;
       await loadProposalsByTab();
     }

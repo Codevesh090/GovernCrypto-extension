@@ -64,17 +64,18 @@ export function resetConversation(): void {
  */
 export async function askAboutProposal(
   question: string,
-  mistralApiKey: string
+  mistralApiKey: string,
+  forcedLanguage?: string
 ): Promise<string> {
   if (!currentProposalContext) {
     return 'No proposal loaded. Please open a proposal first.';
   }
 
-  // Detect the language of the user's question
-  const detectedLanguage = detectLanguage(question);
+  // Use forced language if set, otherwise auto-detect
+  const detectedLanguage = forcedLanguage || detectLanguage(question);
   const languageName = getLanguageName(detectedLanguage);
   
-  console.log('[Voice Conversation] Detected question language:', detectedLanguage, '(' + languageName + ')');
+  // console.log('[Voice Conversation] Language:', detectedLanguage, '(' + languageName + ')', forcedLanguage ? '[FORCED]' : '[auto-detected]');
 
   // Build language-aware system prompt with TTS-friendly instructions
   let languageInstruction = '';
@@ -86,6 +87,12 @@ export async function askAboutProposal(
 - Write numbers in words when they are small (1-20), otherwise use digits that can be read naturally.
 - Write currency amounts in a speakable way: "$1000" should be "one thousand dollars".
 - Avoid symbols like $, %, #, @, &, etc. Write them out in words.`;
+  } else if (detectedLanguage === 'hinglish') {
+    languageInstruction = 'The user wants a Hinglish response. Respond in Hinglish — a natural mix of Hindi and English words as spoken in India. Use Roman script (not Devanagari). Mix Hindi and English naturally like a native Hinglish speaker would. For example: "Yeh proposal basically ek naya system introduce karta hai jo governance ko improve karega."';
+    ttsInstructions = `
+- Write in Roman script Hinglish (mix of Hindi and English words).
+- Numbers can be in English digits or Hindi words, whichever sounds more natural.
+- Keep it conversational and natural-sounding.`;
   } else {
     languageInstruction = `The user is asking in ${languageName}. You MUST respond entirely in ${languageName}. Do NOT mix English words or phrases. Do NOT use English examples like "Think of it like...". Use ${languageName} for everything including examples and analogies.`;
     
@@ -175,11 +182,11 @@ ${currentProposalContext}`;
   
   // Detect language from the response
   const responseLanguage = detectLanguage(cleanResponse);
-  console.log('[Voice Conversation] Detected response language:', responseLanguage);
+  // console.log('[Voice Conversation] Detected response language:', responseLanguage);
   
   // Normalize for speech (convert numbers, currency, acronyms to speakable forms)
   const normalizedResponse = normalizeForSpeech(cleanResponse, responseLanguage);
-  console.log('[Voice Conversation] Normalized response preview:', normalizedResponse.substring(0, 100) + '...');
+  // console.log('[Voice Conversation] Normalized response preview:', normalizedResponse.substring(0, 100) + '...');
 
   // Update rolling memory with normalized response
   conversationHistory.push({ role: 'user',      content: question });

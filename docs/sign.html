@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GovernCrypto — Confirm Vote</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: #000;
+      color: #fff;
+      font-family: 'Roboto Mono', monospace;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+    }
+    .close-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 32px;
+      height: 32px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 4px;
+      color: #fff;
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      z-index: 1000;
+    }
+    .close-btn:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.2);
+    }
+    .card {
+      background: #0a0a0a;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 4px;
+      padding: 28px;
+      max-width: 440px;
+      width: 100%;
+    }
+    .logo {
+      font-size: 10px;
+      font-weight: 700;
+      color: #444;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+    h1 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 5px;
+      line-height: 1.4;
+      letter-spacing: 0.01em;
+    }
+    .dao-name {
+      font-size: 10px;
+      color: #555;
+      margin-bottom: 18px;
+      letter-spacing: 0.03em;
+    }
+    .divider { height: 1px; background: rgba(255,255,255,0.07); margin: 16px 0; }
+    .vote-row {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 3px;
+      padding: 12px 14px;
+      margin-bottom: 18px;
+    }
+    .vote-label {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #555;
+      margin-bottom: 4px;
+    }
+    .vote-choice {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
+    /* Wallet picker */
+    #wallet-picker { display: none; margin-bottom: 16px; }
+    .picker-label {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #555;
+      margin-bottom: 8px;
+    }
+    #wallet-list { display: flex; flex-direction: column; gap: 6px; }
+    .wallet-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 3px;
+      padding: 10px 14px;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'Roboto Mono', monospace;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: border-color 0.12s ease;
+      text-align: left;
+    }
+    .wallet-btn:hover { border-color: rgba(255,255,255,0.25); }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: 'Roboto Mono', monospace;
+      letter-spacing: 0.06em;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+    .btn-primary { background: #fff; color: #000; }
+    .btn-primary:hover:not(:disabled) { opacity: 0.85; }
+    .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+    #status {
+      margin-top: 14px;
+      font-size: 11px;
+      text-align: center;
+      min-height: 18px;
+      color: #555;
+      line-height: 1.5;
+      letter-spacing: 0.03em;
+    }
+    #status.success { color: #fff; font-weight: 600; }
+    #status.error   { color: #EF0606; }
+    #status.loading { color: #666; }
+    .spinner {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-state { text-align: center; color: #555; font-size: 12px; padding: 20px 0; letter-spacing: 0.03em; }
+    #vote-content  { display: none; }
+  </style>
+  <script type="module" crossorigin src="/GovernCrypto-extension/assets/sign-Di9ql356.js"></script>
+  <link rel="modulepreload" crossorigin href="/GovernCrypto-extension/assets/modulepreload-polyfill-B5Qt9EMX.js">
+</head>
+<body>
+  <button class="close-btn" onclick="window.close()" title="Close">×</button>
+  <div class="card">
+    <div class="logo"><img src="/GovernCrypto-extension/assets/logo-B0bAD8my.png" alt="GovernCrypto" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 6px;">GovernCrypto</div>
+    <div id="loading-state"><span class="spinner"></span> Loading proposal...</div>
+    <div id="vote-content">
+      <h1 id="proposal-title"></h1>
+      <div class="dao-name" id="dao-name"></div>
+      <div class="divider"></div>
+      <div class="vote-row">
+        <div class="vote-label">Your Vote</div>
+        <div class="vote-choice" id="choice-label"></div>
+      </div>
+      <div id="wallet-picker">
+        <div class="picker-label">Choose your wallet</div>
+        <div id="wallet-list"></div>
+      </div>
+      <button class="btn btn-primary" id="btn-sign" disabled>Confirm &amp; Sign with Wallet</button>
+      <div id="status"></div>
+    </div>
+  </div>
+</body>
+</html>

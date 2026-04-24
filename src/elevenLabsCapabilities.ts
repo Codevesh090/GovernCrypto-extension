@@ -32,7 +32,7 @@ const DEFAULT_CAPABILITIES: ElevenLabsCapabilities = {
  * Instead of checking subscription tier, we try to use features and see what works
  */
 export async function detectElevenLabsCapabilities(apiKey: string): Promise<ElevenLabsCapabilities> {
-  console.log('[ElevenLabs] Testing API key capabilities...');
+  // console.log('[ElevenLabs] Testing API key capabilities...');
   
   // Start with optimistic defaults - assume all features available
   const capabilities: ElevenLabsCapabilities = {
@@ -47,7 +47,7 @@ export async function detectElevenLabsCapabilities(apiKey: string): Promise<Elev
     voiceLimit: 30
   };
 
-  console.log('[ElevenLabs] Assuming all features available - will check on actual use');
+  // console.log('[ElevenLabs] Assuming all features available - will check on actual use');
   return capabilities;
 }
 
@@ -56,18 +56,18 @@ export async function detectElevenLabsCapabilities(apiKey: string): Promise<Elev
  */
 function determineTier(subscription: any): ElevenLabsCapabilities['tier'] {
   if (!subscription) {
-    console.log('[ElevenLabs] No subscription object found');
+    // console.log('[ElevenLabs] No subscription object found');
     return 'free';
   }
   
-  console.log('[ElevenLabs] Full subscription object:', JSON.stringify(subscription, null, 2));
+  // console.log('[ElevenLabs] Full subscription object:', JSON.stringify(subscription, null, 2));
   
   // Try different possible field names for tier
   const tierField = subscription.tier || subscription.plan || subscription.subscription_tier || subscription.plan_name;
   const tier = tierField?.toLowerCase() || '';
   
-  console.log('[ElevenLabs] Tier field value:', tierField);
-  console.log('[ElevenLabs] Tier (lowercase):', tier);
+  // console.log('[ElevenLabs] Tier field value:', tierField);
+  // console.log('[ElevenLabs] Tier (lowercase):', tier);
   
   // Check for tier variations
   if (tier.includes('business')) return 'business';
@@ -78,7 +78,7 @@ function determineTier(subscription: any): ElevenLabsCapabilities['tier'] {
   
   // Check character limit as fallback indicator
   const charLimit = subscription.character_limit || subscription.quota || 0;
-  console.log('[ElevenLabs] Character limit:', charLimit);
+  // console.log('[ElevenLabs] Character limit:', charLimit);
   
   if (charLimit >= 500000) return 'business';
   if (charLimit >= 200000) return 'scale';
@@ -87,8 +87,8 @@ function determineTier(subscription: any): ElevenLabsCapabilities['tier'] {
   if (charLimit > 10000) return 'pro';
   
   // If no match, log the full subscription object for debugging
-  console.warn('[ElevenLabs] Could not determine tier from subscription:', subscription);
-  console.warn('[ElevenLabs] Please share this log to help fix detection');
+  // console.warn('[ElevenLabs] Could not determine tier from subscription:', subscription);
+  // console.warn('[ElevenLabs] Please share this log to help fix detection');
   return 'free';
 }
 

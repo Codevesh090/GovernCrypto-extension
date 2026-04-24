@@ -28,7 +28,7 @@ export async function getTheme(): Promise<ThemeName> {
     const result = await chrome.storage.local.get(STORAGE_KEY);
     return (result[STORAGE_KEY] as ThemeName) || 'dark';
   } catch (err) {
-    console.error('[Theme] Error getting theme:', err);
+    // console.error('[Theme] Error getting theme:', err);
     return 'dark';
   }
 }
@@ -39,9 +39,9 @@ export async function getTheme(): Promise<ThemeName> {
 export async function saveTheme(theme: ThemeName): Promise<void> {
   try {
     await chrome.storage.local.set({ [STORAGE_KEY]: theme });
-    console.log('[Theme] Saved theme:', theme);
+    // console.log('[Theme] Saved theme:', theme);
   } catch (err) {
-    console.error('[Theme] Error saving theme:', err);
+    // console.error('[Theme] Error saving theme:', err);
   }
 }
 
@@ -60,5 +60,5 @@ export function applyTheme(theme: ThemeName): void {
       : '../../icons/wallet-dark.png';
   }
 
-  console.log('[Theme] Applied theme:', theme);
+  // console.log('[Theme] Applied theme:', theme);
 }

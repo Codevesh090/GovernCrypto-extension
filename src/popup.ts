@@ -16,10 +16,10 @@ import { playIfEnabled } from './soundEffects.js';
 import { detectLanguage } from './languageDetection.js';
 import { THEMES, getTheme, saveTheme, applyTheme, type ThemeName } from './themeStorage.js';
 
-console.log('Snapshot Governance Extension - Popup loaded');
+// console.log('Snapshot Governance Extension - Popup loaded');
 
-const HOSTED_PAGE_URL = 'http://localhost:3000';
-const TRUSTED_ORIGIN = 'http://localhost:3000';
+const HOSTED_PAGE_URL = 'https://codevesh090.github.io/GovernCrypto-extension/';
+const TRUSTED_ORIGIN = 'https://codevesh090.github.io';
 
 // ============================================
 // Feature: Offline Detection
@@ -88,6 +88,9 @@ const appState: {
 };
 
 let isLoadingProposals = false;
+
+// Forced language override for voice responses (null = auto-detect)
+let forcedVoiceLanguage: string | null = null;
 
 // Cache timestamp for hourly auto-reload
 let lastFetchTime = 0;
@@ -207,10 +210,10 @@ function connectWallet() {
 
 // Listen for messages from hosted page
 window.addEventListener('message', async (event) => {
-  console.log('Received message:', event.data, 'from:', event.origin);
+  // console.log('Received message:', event.data, 'from:', event.origin);
 
   if (event.origin !== TRUSTED_ORIGIN) {
-    console.warn('Ignored message from untrusted origin:', event.origin);
+    // console.warn('Ignored message from untrusted origin:', event.origin);
     return;
   }
 
@@ -218,7 +221,7 @@ window.addEventListener('message', async (event) => {
 
   if (event.data?.type === 'WALLET_CONNECTED') {
     const address = event.data.address;
-    console.log('Wallet connected! Address:', address);
+    // console.log('Wallet connected! Address:', address);
 
     if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
       showError('Invalid wallet address received.');
@@ -235,7 +238,7 @@ window.addEventListener('message', async (event) => {
   }
 
   if (event.data?.type === 'CONNECTION_ERROR') {
-    console.log('Connection error received');
+    // console.log('Connection error received');
     showError(event.data.error || 'Connection failed. Please try again.');
   }
 });
@@ -245,7 +248,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'local' && changes.connectedAddress) {
     const newAddress = changes.connectedAddress.newValue;
     if (newAddress) {
-      console.log('Wallet connected via storage change:', newAddress);
+      // console.log('Wallet connected via storage change:', newAddress);
       isConnecting = false;
       appState.address = newAddress;
       // Navigate to connected screen regardless of current screen
@@ -334,7 +337,7 @@ async function saveApiKeys(): Promise<void> {
     }, 1500);
     
   } catch (error) {
-    console.error('[Setup] Error saving keys:', error);
+    // console.error('[Setup] Error saving keys:', error);
     showSetupError('Failed to save API keys. Please try again.');
     await playIfEnabled('error');
   }
@@ -910,7 +913,7 @@ function bindTabEvents(): void {
       // Read dataset BEFORE any await — currentTarget becomes null after async
       const tab = (e.currentTarget as HTMLElement).dataset.tab!;
       await playIfEnabled('click');
-      console.log('[Tab Click] tab:', tab, '| currentTab:', appState.activeTab);
+      // console.log('[Tab Click] tab:', tab, '| currentTab:', appState.activeTab);
       if (appState.activeTab === tab) return;
       appState.activeTab = tab;
       appState.proposals = [];
@@ -968,7 +971,7 @@ function updateLastUpdatedLabel(): void {
 
 async function loadProposalsByTab(forceReload = false): Promise<void> {
   if (isLoadingProposals) {
-    console.log('[Load Proposals] Already loading, skipping...');
+    // console.log('[Load Proposals] Already loading, skipping...');
     return;
   }
 
@@ -1002,11 +1005,7 @@ async function loadProposalsByTab(forceReload = false): Promise<void> {
   const reloadBtn = document.getElementById('btn-reload-proposals');
   reloadBtn?.classList.add('loading');
 
-  console.log('[Load Proposals] Fetching proposals...', {
-    tab: appState.activeTab,
-    skip: appState.proposalsSkip,
-    currentCount: appState.proposals.length
-  });
+  // console.log('[Load Proposals] Fetching proposals...', { tab: appState.activeTab, skip: appState.proposalsSkip, currentCount: appState.proposals.length });
 
   try {
     let raw;
@@ -1016,7 +1015,7 @@ async function loadProposalsByTab(forceReload = false): Promise<void> {
       raw = await fetchDAOProposals(appState.activeTab, appState.proposalsSkip);
     }
 
-    console.log('[Load Proposals] Fetched:', raw.length, 'proposals');
+    // console.log('[Load Proposals] Fetched:', raw.length, 'proposals');
 
     const proposals = raw.map(transformProposal).filter(Boolean) as DisplayProposal[];
     
@@ -1024,15 +1023,15 @@ async function loadProposalsByTab(forceReload = false): Promise<void> {
     const expectedBatchSize = 40;
     appState.hasMoreProposals = proposals.length >= expectedBatchSize;
     
-    console.log('[Load Proposals] Has more proposals:', appState.hasMoreProposals);
+    // console.log('[Load Proposals] Has more proposals:', appState.hasMoreProposals);
     
     // Append to existing proposals if loading more, otherwise replace
     if (appState.proposalsSkip > 0) {
       appState.proposals = [...appState.proposals, ...proposals];
-      console.log('[Load Proposals] Appended. Total now:', appState.proposals.length);
+      // console.log('[Load Proposals] Appended. Total now:', appState.proposals.length);
     } else {
       appState.proposals = proposals;
-      console.log('[Load Proposals] Replaced. Total now:', appState.proposals.length);
+      // console.log('[Load Proposals] Replaced. Total now:', appState.proposals.length);
     }
     
     lastFetchTime = Date.now();
@@ -1057,7 +1056,7 @@ async function loadProposalsByTab(forceReload = false): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to load proposals';
     showProposalsError(msg);
-    console.error('[Load Proposals] Error:', err);
+    // console.error('[Load Proposals] Error:', err);
   } finally {
     isLoadingProposals = false;
     reloadBtn?.classList.remove('loading');
@@ -1141,7 +1140,7 @@ async function loadAISummary(proposal: DisplayProposal, languageCode?: string): 
       summary = await generateSummary(proposal.bodyFull, apiKey, language);
       await cacheSummary(proposal.id, summary, language);
     } catch (err) {
-      console.error('AI Summary generation failed:', err);
+      // console.error('AI Summary generation failed:', err);
       await holdMinLoader(loadStart);
       showSummaryError(getFallbackSummary(proposal.bodyFull));
       return;
@@ -1259,7 +1258,7 @@ function startWakeWordListener(): void {
       // Check all alternatives for better detection
       for (let j = 0; j < result.length; j++) {
         const text = result[j].transcript.toLowerCase().trim();
-        console.log('[Wake Word] Heard (alternative ' + j + '):', text, 'confidence:', result[j].confidence);
+        // console.log('[Wake Word] Heard (alternative ' + j + '):', text, 'confidence:', result[j].confidence);
         
         // Check for "hey" - simple and reliable wake word
         // Matches: "hey", "hay", "a", "eh"
@@ -1276,7 +1275,7 @@ function startWakeWordListener(): void {
         // Check for "hey" variants - only works when idle
         const hasWakeWord = heyVariants.some(variant => text === variant || text.startsWith(variant + ' '));
         if (hasWakeWord && voiceState === 'idle') {
-          console.log('[Wake Word] Wake word "hey" detected! Triggering Ask AI...');
+          // console.log('[Wake Word] Wake word "hey" detected! Triggering Ask AI...');
           // Just trigger the button click - same as manual click
           handleVoiceButtonClick();
           return;
@@ -1298,7 +1297,7 @@ function startWakeWordListener(): void {
   };
 
   wakeWordRecognition.onerror = (e: any) => {
-    console.log('[Wake Word] Error:', e.error);
+    // console.log('[Wake Word] Error:', e.error);
     
     // Silently handle common errors that are expected during continuous listening
     if (e.error === 'no-speech' || e.error === 'aborted' || e.error === 'audio-capture') {
@@ -1308,20 +1307,20 @@ function startWakeWordListener(): void {
     }
     
     // For other errors, log and clear the recognition object
-    console.error('[Wake Word] Unexpected error:', e.error);
+    // console.error('[Wake Word] Unexpected error:', e.error);
     wakeWordRecognition = null;
   };
 
   try {
     wakeWordRecognition.start();
-    console.log('[Wake Word] Listener started');
+    // console.log('[Wake Word] Listener started');
     // Update status hint
     const statusEl = document.getElementById('voice-status');
     if (statusEl && voiceState === 'idle') {
       statusEl.textContent = 'Say "Hey" to start or click Ask AI';
     }
   } catch (e) {
-    console.log('[Wake Word] Failed to start:', e);
+    // console.log('[Wake Word] Failed to start:', e);
     wakeWordRecognition = null;
   }
 }
@@ -1349,15 +1348,15 @@ async function openVoiceSettings(): Promise<void> {
   const capabilities = await getCapabilities();
   const elevenKey = await getElevenLabsApiKey();
 
-  console.log('[Voice Settings] Opening voice settings...');
+  // console.log('[Voice Settings] Opening voice settings...');
 
   // Try to fetch available voices
   if (elevenKey) {
     try {
       availableVoices = await fetchAvailableVoices(elevenKey);
-      console.log('[Voice Settings] Fetched voices:', availableVoices.length);
+      // console.log('[Voice Settings] Fetched voices:', availableVoices.length);
     } catch (error) {
-      console.error('[Voice Settings] Failed to fetch voices:', error);
+      // console.error('[Voice Settings] Failed to fetch voices:', error);
       availableVoices = [];
       
       // Show error message in voice selector
@@ -1583,10 +1582,10 @@ async function handleVoiceButtonClick(): Promise<void> {
   try {
     transcript = await promise;
   } catch (err: any) {
-    console.error('[Voice] Recording failed:', err);
+    // console.error('[Voice] Recording failed:', err);
     // Don't show error if it's just "no speech" - user might have changed their mind
     if (err?.message && err.message.includes('No speech detected')) {
-      console.log('[Voice] No speech detected, returning to idle');
+      // console.log('[Voice] No speech detected, returning to idle');
       setVoiceState('idle');
       return;
     }
@@ -1610,30 +1609,34 @@ async function handleVoiceButtonClick(): Promise<void> {
   setVoiceState('thinking');
   let answer: string;
   try {
-    answer = await askAboutProposal(transcript, mistralKey);
-    console.log('[Voice] AI response received, length:', answer.length);
+    answer = await askAboutProposal(transcript, mistralKey, forcedVoiceLanguage || undefined);
+    // console.log('[Voice] AI response received, length:', answer.length);
   } catch (err: any) {
-    console.error('[Voice] Mistral failed:', err);
+    // console.error('[Voice] Mistral failed:', err);
     showVoiceError('AI response failed. Try again.');
     await playIfEnabled('error');
     return;
   }
 
-  // Step 3: Detect language from AI response (not from user's dropdown)
-  const detectedLanguage = detectLanguage(answer);
-  console.log('[Voice] Detected language from AI response:', detectedLanguage);
-  console.log('[Voice] AI response preview:', answer.substring(0, 100) + '...');
-  console.log('[Voice] ===== FULL TEXT BEING SENT TO TTS =====');
-  console.log('[Voice] Text:', answer);
-  console.log('[Voice] Text length:', answer.length, 'characters');
-  console.log('[Voice] ==========================================');
+  // Step 3: Use forced language if set, otherwise detect from AI response
+  const detectedLanguage = forcedVoiceLanguage || detectLanguage(answer);
+  // console.log('[Voice] Language used:', detectedLanguage, forcedVoiceLanguage ? '(forced)' : '(auto-detected)');
+
+  if (forcedVoiceLanguage) {
+    // console.log(`[Voice] 🔒 FORCED LANGUAGE ACTIVE: "${forcedVoiceLanguage}" — AI response being sent to TTS:\n"${answer}"`);
+  }
+  // console.log('[Voice] AI response preview:', answer.substring(0, 100) + '...');
+  // console.log('[Voice] ===== FULL TEXT BEING SENT TO TTS =====');
+  // console.log('[Voice] Text:', answer);
+  // console.log('[Voice] Text length:', answer.length, 'characters');
+  // console.log('[Voice] ==========================================');
 
   // Step 4: TTS — speak the clean plain-text answer with native accent
   try {
     // Get user's voice settings
     const settings = await getVoiceSettings();
     
-    console.log('[Voice] Starting TTS with language:', detectedLanguage, 'voice:', settings.selectedVoiceId);
+    // console.log('[Voice] Starting TTS with language:', detectedLanguage, 'voice:', settings.selectedVoiceId);
     
     // Use detected language for native accent, not user's dropdown selection
     await speakTextStream(
@@ -1643,20 +1646,15 @@ async function handleVoiceButtonClick(): Promise<void> {
       detectedLanguage,
       () => {
         // Callback when audio is ready to play
-        console.log('[Voice] Audio ready, changing state to speaking');
+        // console.log('[Voice] Audio ready, changing state to speaking');
         setVoiceState('speaking');
       }
     );
     
-    console.log('[Voice] TTS completed successfully');
+    // console.log('[Voice] TTS completed successfully');
   } catch (err: any) {
-    console.error('[Voice] TTS failed:', err);
-    console.error('[Voice] TTS error details:', {
-      message: err?.message,
-      stack: err?.stack,
-      detectedLanguage,
-      answerLength: answer?.length
-    });
+    // console.error('[Voice] TTS failed:', err);
+    // console.error('[Voice] TTS error details:', { message: err?.message, stack: err?.stack, detectedLanguage, answerLength: answer?.length });
     // Show the actual error message from TTS (which includes helpful hints)
     showVoiceError(err?.message || 'Could not play audio response.');
     await playIfEnabled('error');
@@ -1664,6 +1662,82 @@ async function handleVoiceButtonClick(): Promise<void> {
   }
 
   setVoiceState('idle');
+}
+
+// ============================================
+// Force Language Button
+// ============================================
+
+const FORCE_LANG_OPTIONS = [
+  { code: 'en', flag: '🇬🇧', name: 'English' },
+  { code: 'hi', flag: '🇮🇳', name: 'Hindi' },
+  { code: 'hinglish', flag: '🇮🇳', name: 'Hinglish' },
+  { code: 'es', flag: '🇪🇸', name: 'Spanish' },
+  { code: 'fr', flag: '🇫🇷', name: 'French' },
+  { code: 'de', flag: '🇩🇪', name: 'German' },
+  { code: 'pt', flag: '🇧🇷', name: 'Portuguese' },
+  { code: 'zh', flag: '🇨🇳', name: 'Chinese' },
+  { code: 'ja', flag: '🇯🇵', name: 'Japanese' },
+  { code: 'ar', flag: '🇸🇦', name: 'Arabic' },
+];
+
+function setupForceLangButton(): void {
+  const btn = document.getElementById('btn-force-lang');
+  const dropdown = document.getElementById('force-lang-dropdown');
+  if (!btn || !dropdown) return;
+
+  // Populate options
+  dropdown.innerHTML = '';
+  FORCE_LANG_OPTIONS.forEach(lang => {
+    const opt = document.createElement('div');
+    opt.className = 'force-lang-option';
+    opt.dataset.code = lang.code;
+    opt.innerHTML = `<span>${lang.flag}</span><span>${lang.name}</span>`;
+    dropdown.appendChild(opt);
+  });
+
+  // Clear option
+  const clearOpt = document.createElement('div');
+  clearOpt.className = 'force-lang-option clear-option';
+  clearOpt.dataset.code = '';
+  clearOpt.innerHTML = `<span>✕</span><span>Auto-detect</span>`;
+  dropdown.appendChild(clearOpt);
+
+  // Toggle dropdown
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle('show');
+  });
+
+  // Select language
+  dropdown.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const opt = target.closest('.force-lang-option') as HTMLElement;
+    if (!opt) return;
+
+    const code = opt.dataset.code || null;
+    forcedVoiceLanguage = code || null;
+
+    // Update UI
+    dropdown.querySelectorAll('.force-lang-option').forEach(o => o.classList.remove('selected'));
+    if (code) {
+      opt.classList.add('selected');
+      btn.classList.add('active');
+      const lang = FORCE_LANG_OPTIONS.find(l => l.code === code);
+      btn.textContent = lang?.flag || '🌐';
+    } else {
+      btn.classList.remove('active');
+      btn.textContent = '🌐';
+    }
+
+    dropdown.classList.remove('show');
+    // console.log('[Force Lang] Set to:', forcedVoiceLanguage || 'auto-detect');
+  });
+
+  // Close on outside click
+  document.addEventListener('click', () => {
+    dropdown.classList.remove('show');
+  });
 }
 
 // ============================================
@@ -1843,6 +1917,9 @@ async function initialize() {
   // Feature 4: Voice AI button
   document.getElementById('btn-voice')!.addEventListener('click', handleVoiceButtonClick);
 
+  // Force language button
+  setupForceLangButton();
+
   // Voice settings button
   document.getElementById('btn-voice-settings')!.addEventListener('click', openVoiceSettings);
   document.getElementById('btn-close-voice-settings')!.addEventListener('click', closeVoiceSettings);
@@ -1963,11 +2040,11 @@ document.addEventListener('DOMContentLoaded', initialize);
 function setupInfiniteScroll(): void {
   const proposalsList = document.getElementById('proposals-list');
   if (!proposalsList) {
-    console.warn('[Infinite Scroll] proposals-list element not found');
+    // console.warn('[Infinite Scroll] proposals-list element not found');
     return;
   }
 
-  console.log('[Infinite Scroll] Setting up scroll listener on proposals-list');
+  // console.log('[Infinite Scroll] Setting up scroll listener on proposals-list');
   
   // Remove existing listener if any
   proposalsList.removeEventListener('scroll', handleProposalsScroll);
@@ -1975,7 +2052,7 @@ function setupInfiniteScroll(): void {
   // Add scroll listener to the actual scrollable container
   proposalsList.addEventListener('scroll', handleProposalsScroll);
   
-  console.log('[Infinite Scroll] Scroll listener attached successfully');
+  // console.log('[Infinite Scroll] Scroll listener attached successfully');
 }
 
 async function handleProposalsScroll(e: Event): Promise<void> {
@@ -1986,21 +2063,13 @@ async function handleProposalsScroll(e: Event): Promise<void> {
   const clientHeight = target.clientHeight;
   const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
   
-  console.log('[Infinite Scroll] Scroll detected:', {
-    scrollHeight,
-    scrollTop,
-    clientHeight,
-    distanceFromBottom,
-    isLoading: isLoadingProposals,
-    hasMore: appState.hasMoreProposals,
-    currentSkip: appState.proposalsSkip
-  });
+  // console.log('[Infinite Scroll] Scroll detected:', { scrollHeight, scrollTop, clientHeight, distanceFromBottom, isLoading: isLoadingProposals, hasMore: appState.hasMoreProposals, currentSkip: appState.proposalsSkip });
   
   // Check if scrolled near bottom (within 200px)
   const scrolledToBottom = distanceFromBottom < 200;
   
   if (scrolledToBottom && !isLoadingProposals && appState.hasMoreProposals) {
-    console.log('[Infinite Scroll] Loading more proposals...');
+    // console.log('[Infinite Scroll] Loading more proposals...');
     
     // Increment skip to load next batch (always 40 for consistency)
     appState.proposalsSkip += 40;

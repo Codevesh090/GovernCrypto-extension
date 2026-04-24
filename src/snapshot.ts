@@ -100,22 +100,22 @@ async function fetchProposalsBySpace(spaceId: string, skip: number = 0): Promise
 export async function fetchDAOProposals(spaceKey: string, skip: number = 0): Promise<RawProposal[]> {
   const spaces = DAO_FALLBACKS[spaceKey] || [spaceKey];
 
-  console.log('DAO:', spaceKey, '→ trying spaces:', spaces);
+  // console.log('DAO:', spaceKey, '→ trying spaces:', spaces);
 
   for (const space of spaces) {
     try {
       const data = await fetchProposalsBySpace(space, skip);
       if (Array.isArray(data) && data.length > 0) {
-        console.log(`Proposals fetched from ${space}:`, data.length);
+        // console.log(`Proposals fetched from ${space}:`, data.length);
         return data;
       }
-      console.warn(`Empty response from ${space}, trying next...`);
+      // console.warn(`Empty response from ${space}, trying next...`);
     } catch (err) {
-      console.warn(`Failed for ${space}:`, err);
+      // console.warn(`Failed for ${space}:`, err);
     }
   }
 
-  console.warn(`All fallbacks exhausted for ${spaceKey}`);
+  // console.warn(`All fallbacks exhausted for ${spaceKey}`);
   return [];
 }
 

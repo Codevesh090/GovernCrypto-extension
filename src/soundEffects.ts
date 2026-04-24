@@ -133,7 +133,7 @@ export function playSoundEffect(effect: SoundEffect, volume: number = 0.3): void
     
     osc.onended = () => ctx.close();
   } catch (error) {
-    console.error('[Sound Effects] Error playing sound:', error);
+    // console.error('[Sound Effects] Error playing sound:', error);
   }
 }
 

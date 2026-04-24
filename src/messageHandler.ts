@@ -24,9 +24,8 @@ export interface MessageHandler {
  * In production, this should be your actual hosted domain
  */
 const TRUSTED_DOMAINS = [
-  'http://localhost:3000',   // Development
-  'http://127.0.0.1:3000',   // Development
-  'https://your-domain.com'  // Production - replace with actual domain
+  'https://codevesh090.github.io',  // Production GitHub Pages
+];
 ];
 
 /**
@@ -51,7 +50,7 @@ export class WalletMessageHandler implements MessageHandler {
     const isValid = TRUSTED_DOMAINS.includes(origin);
     
     if (!isValid) {
-      console.warn('Message from untrusted origin blocked:', origin);
+      // console.warn('Message from untrusted origin blocked:', origin);
     }
     
     return isValid;
@@ -69,22 +68,22 @@ export class WalletMessageHandler implements MessageHandler {
    */
   async processWalletMessage(event: MessageEvent): Promise<void> {
     try {
-      console.log('Received message:', event.data, 'from origin:', event.origin);
+      // console.log('Received message:', event.data, 'from origin:', event.origin);
       
       // Validate origin first
       if (!this.validateOrigin(event.origin)) {
-        console.error('Security violation: Message from untrusted origin:', event.origin);
+        // console.error('Security violation: Message from untrusted origin:', event.origin);
         return;
       }
 
       // Validate message structure
       const message = event.data;
       if (!message || typeof message !== 'object') {
-        console.error('Invalid message format received');
+        // console.error('Invalid message format received');
         return;
       }
 
-      console.log('Processing wallet message:', message.type);
+      // console.log('Processing wallet message:', message.type);
 
       switch (message.type) {
         case 'WALLET_CONNECTED':
@@ -96,10 +95,10 @@ export class WalletMessageHandler implements MessageHandler {
           break;
           
         default:
-          console.warn('Unknown message type:', message.type);
+          // console.warn('Unknown message type:', message.type);
       }
     } catch (error) {
-      console.error('Error processing wallet message:', error);
+      // console.error('Error processing wallet message:', error);
       this.handleConnectionError('Message processing failed');
     }
   }
@@ -109,19 +108,19 @@ export class WalletMessageHandler implements MessageHandler {
    */
   private async handleWalletConnected(message: WalletMessage): Promise<void> {
     if (!message.address) {
-      console.error('Wallet connected message missing address');
+      // console.error('Wallet connected message missing address');
       this.handleConnectionError('No wallet address received');
       return;
     }
 
     // Validate address format
     if (!this.validateAddress(message.address)) {
-      console.error('Invalid Ethereum address format:', message.address);
+      // console.error('Invalid Ethereum address format:', message.address);
       this.handleConnectionError('Invalid wallet address format');
       return;
     }
 
-    console.log('Wallet connected successfully:', message.address.slice(0, 6) + '...' + message.address.slice(-4));
+    // console.log('Wallet connected successfully:', message.address.slice(0, 6) + '...' + message.address.slice(-4));
     
     // Call success callback
     if (this.onWalletConnected) {
@@ -134,7 +133,7 @@ export class WalletMessageHandler implements MessageHandler {
    */
   handleConnectionError(error?: string): void {
     const errorMessage = error || 'Wallet connection failed';
-    console.error('Wallet connection error:', errorMessage);
+    // console.error('Wallet connection error:', errorMessage);
     
     // Call error callback
     if (this.onConnectionError) {
@@ -149,7 +148,7 @@ export class WalletMessageHandler implements MessageHandler {
     window.addEventListener('message', (event) => {
       this.processWalletMessage(event);
     });
-    console.log('Message handler started listening for wallet messages');
+    // console.log('Message handler started listening for wallet messages');
   }
 
   /**
@@ -159,7 +158,7 @@ export class WalletMessageHandler implements MessageHandler {
     window.removeEventListener('message', (event) => {
       this.processWalletMessage(event);
     });
-    console.log('Message handler stopped listening');
+    // console.log('Message handler stopped listening');
   }
 }
 

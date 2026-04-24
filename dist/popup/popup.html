@@ -155,7 +155,19 @@
           <div id="voice-status">Tap to ask AI about this proposal</div>
           <button id="btn-voice-settings" class="voice-settings-btn" title="Voice Settings"><img src="../../icons/settings.png" alt="Settings" style="width:16px;height:16px;object-fit:contain;"></button>
         </div>
-        <button id="btn-voice" aria-label="Ask AI by voice">🎙️ Ask AI</button>
+        <div style="display: flex; align-items: center; gap: 6px; justify-content: center;">
+          <button id="btn-voice" aria-label="Ask AI by voice">🎙️ Ask AI</button>
+          <div style="position: relative;">
+            <button id="btn-force-lang" class="voice-force-lang-btn" title="Force response language">🌐</button>
+            <div id="force-lang-dropdown" class="force-lang-dropdown">
+              <!-- populated by JS -->
+            </div>
+            <div class="voice-info-btn-wrap">
+              <span class="voice-info-btn">ⓘ</span>
+              <div class="voice-info-tooltip">AI auto-detects your language, but it can sometimes lag. Use this button to force a specific language for audio output.</div>
+            </div>
+          </div>
+        </div>
         <div id="voice-transcript" style="display:none;"></div>
       </div>
     </div>

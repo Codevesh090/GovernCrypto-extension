@@ -17,7 +17,7 @@ export function detectLanguage(text: string): string {
   // Try franc-min first for better accuracy (only if text is long enough)
   if (text.length >= 20) {
     const francResult = franc(text, { minLength: 10 });
-    console.log('[Language Detection] franc-min result:', francResult);
+    // console.log('[Language Detection] franc-min result:', francResult);
     
     // Map franc ISO 639-3 codes to our 2-letter codes
     const francMap: Record<string, string> = {
@@ -39,7 +39,7 @@ export function detectLanguage(text: string): string {
     };
     
     if (francResult && francResult !== 'und' && francMap[francResult]) {
-      console.log('[Language Detection] Using franc-min detection:', francMap[francResult]);
+      // console.log('[Language Detection] Using franc-min detection:', francMap[francResult]);
       return francMap[francResult];
     }
   }
@@ -52,7 +52,7 @@ export function detectLanguage(text: string): string {
   // Romanized Hindi/Hinglish detection (BEFORE other Latin-script languages)
   // Common Hindi words written in Latin script
   if (/(mujhe|tumhe|kya|hai|hain|aap|tum|yeh|yah|kaise|kahan|kyun|kab|samajh|samjh|proposal|karta|karti|karte|chahiye|chahte|batao|bata|dijiye|please|kar|karo|hoga|hogi|honge|tha|thi|the|nahi|nahin|haan|ji|bhi|aur|ya|lekin|par|ke|ki|ka|ko|se|me|mein|pe|tak|bahut|bohot|thoda|zyada|jyada)/i.test(sample)) {
-    console.log('[Language Detection] Detected Romanized Hindi/Hinglish');
+    // console.log('[Language Detection] Detected Romanized Hindi/Hinglish');
     return 'hi';
   }
   

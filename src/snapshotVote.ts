@@ -59,7 +59,7 @@ const VOTE_TYPE: Array<{ name: string; type: string }> = [
 
 const SNAPSHOT_RELAY = 'https://seq.snapshot.org/';
 
-const SIGN_PAGE_URL = 'http://localhost:3001/sign.html';
+const SIGN_PAGE_URL = 'https://codevesh090.github.io/GovernCrypto-extension/sign.html';
 
 /**
  * Opens the hosted sign page (localhost:3000) where MetaMask IS injected.
@@ -85,8 +85,8 @@ export function castVoteViaTab(
     }, 300000);
 
     function onMessage(event: MessageEvent) {
-      // Accept messages from localhost:3000
-      if (event.origin !== 'http://localhost:3001') return;
+      // Accept messages from GitHub Pages
+      if (event.origin !== 'https://codevesh090.github.io') return;
       const msg = event.data;
       if (!msg) return;
 

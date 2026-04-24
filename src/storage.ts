@@ -63,9 +63,9 @@ export class WalletStorage implements StorageAPI {
         [WalletStorage.CONNECTION_TIMESTAMP_KEY]: data.connectionTimestamp
       });
 
-      console.log('Wallet address stored successfully:', truncateAddress(address));
+      // console.log('Wallet address stored successfully:', truncateAddress(address));
     } catch (error) {
-      console.error('Failed to store wallet address:', error);
+      // console.error('Failed to store wallet address:', error);
       throw error;
     }
   }
@@ -84,14 +84,14 @@ export class WalletStorage implements StorageAPI {
 
       // Validate stored address
       if (!isValidEthereumAddress(address)) {
-        console.warn('Invalid stored address found, clearing storage');
+        // console.warn('Invalid stored address found, clearing storage');
         await this.clearWalletData();
         return null;
       }
 
       return address;
     } catch (error) {
-      console.error('Failed to retrieve wallet address:', error);
+      // console.error('Failed to retrieve wallet address:', error);
       return null;
     }
   }
@@ -105,9 +105,9 @@ export class WalletStorage implements StorageAPI {
         WalletStorage.WALLET_ADDRESS_KEY,
         WalletStorage.CONNECTION_TIMESTAMP_KEY
       ]);
-      console.log('Wallet data cleared successfully');
+      // console.log('Wallet data cleared successfully');
     } catch (error) {
-      console.error('Failed to clear wallet data:', error);
+      // console.error('Failed to clear wallet data:', error);
       throw error;
     }
   }
@@ -120,7 +120,7 @@ export class WalletStorage implements StorageAPI {
       const result = await chrome.storage.local.get([WalletStorage.CONNECTION_TIMESTAMP_KEY]);
       return result[WalletStorage.CONNECTION_TIMESTAMP_KEY] || null;
     } catch (error) {
-      console.error('Failed to retrieve connection timestamp:', error);
+      // console.error('Failed to retrieve connection timestamp:', error);
       return null;
     }
   }

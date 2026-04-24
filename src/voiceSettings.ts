@@ -68,7 +68,7 @@ export async function fetchAvailableVoices(apiKey: string): Promise<Voice[]> {
     const data = await response.json();
     return data.voices || [];
   } catch (error) {
-    console.error('[Voice Settings] Error fetching voices:', error);
+    // console.error('[Voice Settings] Error fetching voices:', error);
     return [];
   }
 }

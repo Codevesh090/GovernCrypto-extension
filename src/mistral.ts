@@ -179,8 +179,8 @@ export async function generateSummary(proposalBody: string, apiKey: string, lang
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-    console.log(`[Mistral] Attempt ${attempt}/${MAX_RETRIES} — sending request to:`, MISTRAL_ENDPOINT);
-    console.log('[Mistral] Request body:', requestBody);
+    // console.log(`[Mistral] Attempt ${attempt}/${MAX_RETRIES} — sending request to:`, MISTRAL_ENDPOINT);
+    // console.log('[Mistral] Request body:', requestBody);
 
     try {
       const response = await fetch(MISTRAL_ENDPOINT, {
@@ -195,29 +195,29 @@ export async function generateSummary(proposalBody: string, apiKey: string, lang
 
       clearTimeout(timeoutId);
 
-      console.log(`[Mistral] Response status: ${response.status} ${response.statusText}`);
+      // console.log(`[Mistral] Response status: ${response.status} ${response.statusText}`);
 
       // 503/429 = overloaded or rate limited, retry with backoff
       if ((response.status === 503 || response.status === 429) && attempt < MAX_RETRIES) {
         const delay = RETRY_DELAY_MS * attempt;
-        console.warn(`[Mistral] ${response.status} received, retrying in ${delay}ms...`);
+        // console.warn(`[Mistral] ${response.status} received, retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
 
       if (!response.ok) {
         const errorBody = await response.text().catch(() => '(could not read error body)');
-        console.error(`[Mistral] Error response body:`, errorBody);
+        // console.error(`[Mistral] Error response body:`, errorBody);
         throw new Error(`Mistral API error: ${response.status} — ${errorBody}`);
       }
 
       const json = await response.json();
-      console.log('[Mistral] Response JSON:', JSON.stringify(json, null, 2));
+      // console.log('[Mistral] Response JSON:', JSON.stringify(json, null, 2));
 
       const text = json?.choices?.[0]?.message?.content;
 
       if (!text) {
-        console.error('[Mistral] Empty text in response. Full JSON:', json);
+        // console.error('[Mistral] Empty text in response. Full JSON:', json);
         throw new Error('Mistral returned empty response');
       }
 
@@ -226,11 +226,11 @@ export async function generateSummary(proposalBody: string, apiKey: string, lang
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        console.error('[Mistral] Request timed out');
+        // console.error('[Mistral] Request timed out');
         throw new Error('Request timed out');
       }
       if (attempt < MAX_RETRIES && !(err.message?.includes('Mistral API error'))) {
-        console.warn(`[Mistral] Attempt ${attempt} failed: ${err.message}, retrying...`);
+        // console.warn(`[Mistral] Attempt ${attempt} failed: ${err.message}, retrying...`);
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
         continue;
       }
