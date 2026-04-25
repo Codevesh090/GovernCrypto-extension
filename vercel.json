@@ -1,0 +1,7 @@
+{
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/connect", "destination": "/connect/index.html" },
+    { "source": "/sign", "destination": "/sign/index.html" }
+  ]
+}

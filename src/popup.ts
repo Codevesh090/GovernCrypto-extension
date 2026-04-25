@@ -18,8 +18,8 @@ import { THEMES, getTheme, saveTheme, applyTheme, type ThemeName } from './theme
 
 // console.log('Snapshot Governance Extension - Popup loaded');
 
-const HOSTED_PAGE_URL = 'https://codevesh090.github.io/GovernCrypto-extension/';
-const TRUSTED_ORIGIN = 'https://codevesh090.github.io';
+const HOSTED_PAGE_URL = 'https://governcrypto.xyz/connect';
+const TRUSTED_ORIGIN = 'https://governcrypto.xyz';
 
 // ============================================
 // Feature: Offline Detection

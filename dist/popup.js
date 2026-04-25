@@ -1641,7 +1641,7 @@ ${currentProposalContext}`;
   }
 
   // src/snapshotVote.ts
-  var SIGN_PAGE_URL = "https://codevesh090.github.io/GovernCrypto-extension/sign.html";
+  var SIGN_PAGE_URL = "https://governcrypto.xyz/sign";
   function castVoteViaTab(proposalId, choiceIndex) {
     return new Promise((resolve, reject) => {
       const url = `${SIGN_PAGE_URL}?proposalId=${encodeURIComponent(proposalId)}&choice=${choiceIndex}`;
@@ -1655,7 +1655,7 @@ ${currentProposalContext}`;
         reject(new Error("Vote signing timed out."));
       }, 3e5);
       function onMessage(event) {
-        if (event.origin !== "https://codevesh090.github.io") return;
+        if (event.origin !== "https://governcrypto.xyz") return;
         const msg = event.data;
         if (!msg) return;
         if (msg.type === "VOTE_SUCCESS" && msg.proposalId === proposalId) {
@@ -1848,8 +1848,8 @@ ${currentProposalContext}`;
   }
 
   // src/popup.ts
-  var HOSTED_PAGE_URL = "https://codevesh090.github.io/GovernCrypto-extension/";
-  var TRUSTED_ORIGIN = "https://codevesh090.github.io";
+  var HOSTED_PAGE_URL = "https://governcrypto.xyz/connect";
+  var TRUSTED_ORIGIN = "https://governcrypto.xyz";
   function updateOfflineBanner() {
     const banner = document.getElementById("offline-banner");
     if (!banner) return;

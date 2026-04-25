@@ -24,7 +24,7 @@ export interface MessageHandler {
  * In production, this should be your actual hosted domain
  */
 const TRUSTED_DOMAINS = [
-  'https://codevesh090.github.io',  // Production GitHub Pages
+  'https://governcrypto.xyz',  // Production
 ];
 ];
 
