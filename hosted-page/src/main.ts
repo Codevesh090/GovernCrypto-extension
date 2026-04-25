@@ -116,9 +116,13 @@ async function connectWallet() {
   userInitiated = true
   updateStatus('Opening wallet selector...', 'connecting')
 
+  // Disconnect first, wait for it to complete, then open picker
   try {
     await modal.disconnect()
   } catch (_) {}
+
+  // Wait 500ms to ensure disconnect is fully processed before opening
+  await new Promise(resolve => setTimeout(resolve, 500))
 
   modal.open({ view: 'Connect' })
 }
