@@ -1,7 +1,6 @@
 /**
  * Content script — injected at document_start on governcrypto.xyz
  * Polls localStorage for wallet data and sends to extension via chrome.runtime.sendMessage
- * This is the PRIMARY channel — no window.opener, no postMessage
  */
 
 const STORAGE_KEY = 'governcrypto_wallet'
@@ -19,39 +18,40 @@ function checkWalletData(): void {
     const parsed = JSON.parse(raw)
     const { address, timestamp } = parsed
 
-    // Validate address format
     if (!address || !ETH_ADDRESS_REGEX.test(address)) {
       localStorage.removeItem(STORAGE_KEY)
       return
     }
 
-    // Only process recent connections (within 30 seconds)
     if (!timestamp || Date.now() - timestamp > 30000) {
       localStorage.removeItem(STORAGE_KEY)
       return
     }
 
     sent = true
+    console.log('[Bridge] Found wallet, sending to extension:', address)
 
-    // Send to extension background/popup
-    chrome.runtime.sendMessage({
-      type: 'WALLET_CONNECTED',
-      payload: { address, timestamp }
-    })
+    chrome.runtime.sendMessage(
+      { type: 'WALLET_CONNECTED', payload: { address, timestamp } },
+      (_response) => {
+        if (chrome.runtime.lastError) {
+          console.log('[Bridge] sendMessage error:', chrome.runtime.lastError.message)
+          // Fallback: write directly to storage if sendMessage fails
+          chrome.storage.local.set({ connectedAddress: address })
+        } else {
+          console.log('[Bridge] Message delivered to extension')
+        }
+      }
+    )
 
-    // Clean up localStorage
     localStorage.removeItem(STORAGE_KEY)
-
-    // Close the tab after success
-    setTimeout(() => window.close(), 500)
+    setTimeout(() => window.close(), 800)
 
   } catch (e) {
-    // ignore parse errors
+    console.log('[Bridge] Error:', e)
   }
 }
 
 // Poll every 500ms
 const interval = setInterval(checkWalletData, 500)
-
-// Stop polling after 5 minutes
 setTimeout(() => clearInterval(interval), 300000)
