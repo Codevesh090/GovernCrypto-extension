@@ -1,6 +1,6 @@
 /**
  * Hosted Web3Modal page for wallet connection
- * Always shows wallet picker — never auto-connects
+ * Always shows wallet picker — user must manually choose wallet
  */
 
 import { createWeb3Modal, defaultConfig } from '@web3modal/ethers'
@@ -25,57 +25,12 @@ const metadata = {
   icons: ['https://governcrypto.xyz/logo.png']
 }
 
-// ── Clear ALL cached wallet sessions before creating modal ──────────
-function clearAllWalletSessions() {
-  // 1. Clear localStorage keys
-  try {
-    const keysToRemove: string[] = []
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (key && (
-        key.startsWith('wc@') ||
-        key.startsWith('W3M') ||
-        key.startsWith('@w3m') ||
-        key.startsWith('wagmi') ||
-        key.includes('walletconnect') ||
-        key.includes('web3modal') ||
-        key.includes('WALLETCONNECT') ||
-        key.includes('WEB3MODAL')
-      )) {
-        keysToRemove.push(key)
-      }
-    }
-    keysToRemove.forEach(k => localStorage.removeItem(k))
-    console.log('[GC] Cleared', keysToRemove.length, 'localStorage session keys')
-  } catch (e) {
-    console.log('[GC] localStorage clear error:', e)
-  }
-
-  // 2. Clear sessionStorage too
-  try {
-    sessionStorage.clear()
-  } catch (_) {}
-
-  // 3. Clear IndexedDB databases used by WalletConnect/Web3Modal
-  try {
-    const dbNames = ['WALLET_CONNECT_V2_INDEXED_DB', 'w3m', 'wc', 'wagmi']
-    dbNames.forEach(name => {
-      try { indexedDB.deleteDatabase(name) } catch (_) {}
-    })
-    console.log('[GC] Cleared IndexedDB sessions')
-  } catch (e) {
-    console.log('[GC] IndexedDB clear error:', e)
-  }
-}
-
-// Clear sessions BEFORE creating modal
-clearAllWalletSessions()
-
 const config = defaultConfig({
   metadata,
-  enableEIP6963: true,
-  enableInjected: true,
-  enableCoinbase: true,
+  // Disable auto-detection of injected wallets to prevent auto-connect
+  enableEIP6963: false,
+  enableInjected: false,
+  enableCoinbase: false,
   rpcUrl: 'https://cloudflare-eth.com',
   defaultChainId: 1
 })
@@ -154,24 +109,18 @@ modal.subscribeProvider(async ({ provider, address, isConnected }) => {
   }
 })
 
-// Button click handler
+// Button click — always show wallet picker
 async function connectWallet() {
   console.log('[GC] Connect clicked')
   addressSent = false
   userInitiated = true
   updateStatus('Opening wallet selector...', 'connecting')
 
-  // Disconnect + clear again right before opening
   try {
     await modal.disconnect()
   } catch (_) {}
 
-  clearAllWalletSessions()
-
-  // Small delay to ensure disconnect is fully processed
-  setTimeout(() => {
-    modal.open({ view: 'Connect' })
-  }, 300)
+  modal.open({ view: 'Connect' })
 }
 
 function init() {
