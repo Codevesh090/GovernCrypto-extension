@@ -60,21 +60,33 @@ function sendToExtension(address: string) {
   if (addressSent) return
   addressSent = true
 
-  console.log('[GC] Address:', address)
+  console.log('[GC] Sending address to extension:', address)
 
+  // Write to localStorage — the content script (walletBridge.ts) polls this
   try {
     localStorage.setItem('gc_wallet_address', address)
     localStorage.setItem('gc_wallet_ts', Date.now().toString())
-  } catch (_) {}
+    console.log('[GC] Wrote address to localStorage')
+  } catch (e) {
+    console.error('[GC] Failed to write localStorage:', e)
+  }
 
+  // Also dispatch a custom event for the content script to catch
   try {
     window.dispatchEvent(new CustomEvent('gc_wallet_connected', { detail: { address } }))
-  } catch (_) {}
+    console.log('[GC] Dispatched gc_wallet_connected event')
+  } catch (e) {
+    console.error('[GC] Failed to dispatch event:', e)
+  }
 
+  // If opened via window.open(), also postMessage to the opener
   if (window.opener) {
     try {
       window.opener.postMessage({ type: 'WALLET_CONNECTED', address }, '*')
-    } catch (_) {}
+      console.log('[GC] Sent postMessage to opener')
+    } catch (e) {
+      console.error('[GC] Failed to postMessage:', e)
+    }
   }
 
   updateStatus('Connected! You can close this tab.', 'success')
@@ -116,28 +128,74 @@ function connectWallet() {
   modal.open()
 }
 
-window.addEventListener('load', () => {
-  console.log('[GC] Page loaded, project:', PROJECT_ID)
-  connectButton.addEventListener('click', connectWallet)
-  statusDiv.classList.add('hidden')
+// ---- Initialization ----
+// Use DOMContentLoaded for faster, more reliable setup.
+// Each step is isolated so one failure doesn't prevent others.
+
+function init() {
+  console.log('[GC] Hosted page loaded')
+
+  // 1. Attach the connect button handler (MOST IMPORTANT)
+  try {
+    connectButton.addEventListener('click', connectWallet)
+    console.log('[GC] Connect button handler attached')
+  } catch (e) {
+    console.error('[GC] Failed to attach connect handler:', e)
+  }
+
+  // 2. Hide status initially
+  try {
+    statusDiv.classList.add('hidden')
+  } catch (_) {}
+
+  // 3. Load theme (non-blocking, errors silenced)
   loadTheme()
-})
+}
 
 async function loadTheme() {
   try {
-    const result = await chrome.storage.local.get('selectedTheme')
-    applyTheme(result.selectedTheme || 'dark')
-  } catch (_) {}
+    // chrome.storage is ONLY available in extension contexts (popup, background, content scripts)
+    // On the hosted page (regular web page), it does NOT exist — guard carefully
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      const result = await chrome.storage.local.get('selectedTheme')
+      applyTheme(result.selectedTheme || 'dark')
+    } else {
+      console.log('[GC] Could not load theme (not in extension context)')
+      applyTheme('dark')
+    }
+  } catch (_) {
+    console.log('[GC] Could not load theme (not in extension context)')
+    applyTheme('dark')
+  }
 }
 
 function applyTheme(theme: string) {
   document.body.className = `theme-${theme}`
 }
 
-if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.type === 'THEME_CHANGED') applyTheme(message.theme)
-  })
+// Listen for theme changes from the extension — only if running inside extension context
+try {
+  if (
+    typeof chrome !== 'undefined' &&
+    chrome.runtime &&
+    chrome.runtime.onMessage &&
+    typeof chrome.runtime.onMessage.addListener === 'function'
+  ) {
+    chrome.runtime.onMessage.addListener((message: any) => {
+      if (message.type === 'THEME_CHANGED') applyTheme(message.theme)
+    })
+  }
+} catch (e) {
+  // Not in extension context — this is expected on the hosted page
+  console.log('[GC] chrome.runtime not available (expected on hosted page)')
+}
+
+// Run init when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init)
+} else {
+  // DOM already loaded
+  init()
 }
 
 export {}
