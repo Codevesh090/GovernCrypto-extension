@@ -1,5 +1,10 @@
 /**
  * Hosted Web3Modal page for wallet connection
+ * 
+ * This page is opened by the extension when the user clicks "Connect Wallet".
+ * It shows Web3Modal so the user can pick which wallet to use.
+ * Once connected, the address is written to localStorage for the
+ * content script (walletBridge.ts) to pick up and relay to chrome.storage.
  */
 
 import { createWeb3Modal, defaultConfig } from '@web3modal/ethers'
@@ -32,6 +37,31 @@ const config = defaultConfig({
   rpcUrl: 'https://cloudflare-eth.com',
   defaultChainId: 1
 })
+
+// Clear any cached WalletConnect / Web3Modal sessions BEFORE creating the modal
+// so it doesn't auto-reconnect to a previous wallet
+try {
+  const keysToRemove: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && (
+      key.startsWith('wc@') ||
+      key.startsWith('W3M') ||
+      key.startsWith('@w3m') ||
+      key.startsWith('wagmi') ||
+      key.includes('walletconnect') ||
+      key.includes('web3modal')
+    )) {
+      keysToRemove.push(key)
+    }
+  }
+  keysToRemove.forEach(k => localStorage.removeItem(k))
+  if (keysToRemove.length > 0) {
+    console.log('[GC] Cleared', keysToRemove.length, 'cached wallet session keys')
+  }
+} catch (e) {
+  console.log('[GC] Could not clear cached sessions:', e)
+}
 
 const modal = createWeb3Modal({
   ethersConfig: config,
@@ -97,7 +127,11 @@ function sendToExtension(address: string) {
 modal.subscribeProvider(async ({ provider, address, isConnected }) => {
   console.log('[GC] Provider update:', { address, isConnected, userInitiated })
 
-  if (!userInitiated) return
+  // Only process if user clicked the connect button
+  if (!userInitiated) {
+    console.log('[GC] Ignoring provider update (not user-initiated)')
+    return
+  }
 
   if (isConnected && address) {
     updateStatus('Connected!', 'success')
@@ -119,18 +153,26 @@ modal.subscribeProvider(async ({ provider, address, isConnected }) => {
   }
 })
 
-// Button click — just open the modal, no await
-function connectWallet() {
+// Button click — disconnect any existing session, then open the modal to the Connect view
+async function connectWallet() {
   console.log('[GC] Connect clicked')
   addressSent = false
   userInitiated = true
   updateStatus('Opening wallet selector...', 'connecting')
-  modal.open()
+
+  // Disconnect any stale session first so the modal always shows the wallet picker
+  try {
+    await modal.disconnect()
+    console.log('[GC] Disconnected existing session')
+  } catch (_) {
+    // No session to disconnect — that's fine
+  }
+
+  // Open the modal to the Connect view (wallet selection UI)
+  modal.open({ view: 'Connect' })
 }
 
 // ---- Initialization ----
-// Use DOMContentLoaded for faster, more reliable setup.
-// Each step is isolated so one failure doesn't prevent others.
 
 function init() {
   console.log('[GC] Hosted page loaded')
@@ -148,14 +190,18 @@ function init() {
     statusDiv.classList.add('hidden')
   } catch (_) {}
 
-  // 3. Load theme (non-blocking, errors silenced)
+  // 3. Disconnect any auto-connected session from a previous visit
+  try {
+    modal.disconnect().catch(() => {})
+    console.log('[GC] Cleared any auto-reconnected session')
+  } catch (_) {}
+
+  // 4. Load theme (non-blocking, errors silenced)
   loadTheme()
 }
 
 async function loadTheme() {
   try {
-    // chrome.storage is ONLY available in extension contexts (popup, background, content scripts)
-    // On the hosted page (regular web page), it does NOT exist — guard carefully
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       const result = await chrome.storage.local.get('selectedTheme')
       applyTheme(result.selectedTheme || 'dark')
@@ -164,7 +210,6 @@ async function loadTheme() {
       applyTheme('dark')
     }
   } catch (_) {
-    console.log('[GC] Could not load theme (not in extension context)')
     applyTheme('dark')
   }
 }
@@ -173,7 +218,7 @@ function applyTheme(theme: string) {
   document.body.className = `theme-${theme}`
 }
 
-// Listen for theme changes from the extension — only if running inside extension context
+// Listen for theme changes — only in extension context
 try {
   if (
     typeof chrome !== 'undefined' &&
@@ -185,16 +230,12 @@ try {
       if (message.type === 'THEME_CHANGED') applyTheme(message.theme)
     })
   }
-} catch (e) {
-  // Not in extension context — this is expected on the hosted page
-  console.log('[GC] chrome.runtime not available (expected on hosted page)')
-}
+} catch (_) {}
 
 // Run init when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init)
 } else {
-  // DOM already loaded
   init()
 }
 
