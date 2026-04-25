@@ -14,8 +14,7 @@
     "https://api.elevenlabs.io/*",
     "https://seq.snapshot.org/*",
     "https://hub.snapshot.org/*",
-    "http://localhost:3000/*",
-    "http://localhost:3001/*"
+    "https://governcrypto.xyz/*"
   ],
   "action": {
     "default_title": "GovernCrypto",
@@ -31,6 +30,13 @@
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": ["https://governcrypto.xyz/connect*", "https://governcrypto.xyz/sign*"],
+      "js": ["wallet-bridge.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "web_accessible_resources": [
     {
       "resources": [

@@ -62,22 +62,25 @@ function sendToExtension(address: string) {
   if (addressSent) return
   addressSent = true
 
-  console.log('Sending address to extension:', address)
-
-  // Primary: use chrome.storage so the extension popup picks it up via storage listener
-  if (typeof chrome !== 'undefined' && chrome.storage) {
-    chrome.storage.local.set({ connectedAddress: address }, () => {
-      console.log('Address saved to chrome.storage')
-    })
+  // Try chrome.storage if available (works when opened from extension context)
+  if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+    chrome.storage.local.set({ connectedAddress: address })
   }
 
-  // Fallback: try postMessage to opener if available
+  // Try postMessage to opener
   if (window.opener) {
     window.opener.postMessage({ type: 'WALLET_CONNECTED', address }, '*')
-    console.log('Message sent via postMessage!')
   }
 
-  setTimeout(() => window.close(), 800)
+  // Store in localStorage so extension can poll it via a content script approach
+  // Use a well-known key that the extension background polls
+  try {
+    localStorage.setItem('gc_wallet_address', address)
+    localStorage.setItem('gc_wallet_ts', Date.now().toString())
+  } catch (_) {}
+
+  updateStatus('Connected! You can close this tab.', 'success')
+  setTimeout(() => window.close(), 1500)
 }
 
 function sendError(msg: string) {

@@ -200,45 +200,46 @@ function connectWallet() {
   isConnecting = true;
   showState('connecting');
 
-  const tab = window.open(HOSTED_PAGE_URL, '_blank');
+  window.open(HOSTED_PAGE_URL, '_blank');
 
-  if (!tab) {
-    showError('Popup was blocked. Please allow popups for this extension.');
-    return;
-  }
+  // Poll chrome.storage every second for up to 5 minutes
+  // since the hosted page can't directly write to chrome.storage
+  const pollInterval = setInterval(async () => {
+    const result = await chrome.storage.local.get('connectedAddress');
+    if (result.connectedAddress) {
+      clearInterval(pollInterval);
+      isConnecting = false;
+      appState.address = result.connectedAddress;
+      showConnected(result.connectedAddress);
+      navigate('connected');
+    }
+  }, 1000);
+
+  // Stop polling after 5 minutes
+  setTimeout(() => clearInterval(pollInterval), 300000);
 }
 
 // Listen for messages from hosted page
 window.addEventListener('message', async (event) => {
-  // console.log('Received message:', event.data, 'from:', event.origin);
-
-  if (event.origin !== TRUSTED_ORIGIN) {
-    // console.warn('Ignored message from untrusted origin:', event.origin);
-    return;
-  }
-
-  if (!isConnecting) return;
+  if (event.origin !== TRUSTED_ORIGIN) return;
 
   if (event.data?.type === 'WALLET_CONNECTED') {
     const address = event.data.address;
-    // console.log('Wallet connected! Address:', address);
-
     if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
       showError('Invalid wallet address received.');
       return;
     }
-
     try {
       await chrome.storage.local.set({ connectedAddress: address });
       isConnecting = false;
       showConnected(address);
+      navigate('connected');
     } catch (err) {
       showError('Failed to save wallet address.');
     }
   }
 
   if (event.data?.type === 'CONNECTION_ERROR') {
-    // console.log('Connection error received');
     showError(event.data.error || 'Connection failed. Please try again.');
   }
 });
@@ -262,11 +263,20 @@ async function changeWallet() {
   isConnecting = true;
   showState('connecting');
 
-  const tab = window.open(HOSTED_PAGE_URL, '_blank');
+  window.open(HOSTED_PAGE_URL, '_blank');
 
-  if (!tab) {
-    showError('Popup was blocked. Please allow popups for this extension.');
-  }
+  const pollInterval = setInterval(async () => {
+    const result = await chrome.storage.local.get('connectedAddress');
+    if (result.connectedAddress) {
+      clearInterval(pollInterval);
+      isConnecting = false;
+      appState.address = result.connectedAddress;
+      showConnected(result.connectedAddress);
+      navigate('connected');
+    }
+  }, 1000);
+
+  setTimeout(() => clearInterval(pollInterval), 300000);
 }
 
 async function disconnectWallet() {

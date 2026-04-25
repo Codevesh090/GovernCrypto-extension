@@ -1976,17 +1976,21 @@ ${currentProposalContext}`;
   function connectWallet() {
     isConnecting = true;
     showState("connecting");
-    const tab = window.open(HOSTED_PAGE_URL, "_blank");
-    if (!tab) {
-      showError("Popup was blocked. Please allow popups for this extension.");
-      return;
-    }
+    window.open(HOSTED_PAGE_URL, "_blank");
+    const pollInterval = setInterval(async () => {
+      const result = await chrome.storage.local.get("connectedAddress");
+      if (result.connectedAddress) {
+        clearInterval(pollInterval);
+        isConnecting = false;
+        appState.address = result.connectedAddress;
+        showConnected(result.connectedAddress);
+        navigate("connected");
+      }
+    }, 1e3);
+    setTimeout(() => clearInterval(pollInterval), 3e5);
   }
   window.addEventListener("message", async (event) => {
-    if (event.origin !== TRUSTED_ORIGIN) {
-      return;
-    }
-    if (!isConnecting) return;
+    if (event.origin !== TRUSTED_ORIGIN) return;
     if (event.data?.type === "WALLET_CONNECTED") {
       const address = event.data.address;
       if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
@@ -1997,6 +2001,7 @@ ${currentProposalContext}`;
         await chrome.storage.local.set({ connectedAddress: address });
         isConnecting = false;
         showConnected(address);
+        navigate("connected");
       } catch (err) {
         showError("Failed to save wallet address.");
       }
@@ -2020,10 +2025,18 @@ ${currentProposalContext}`;
     await chrome.storage.local.remove("connectedAddress");
     isConnecting = true;
     showState("connecting");
-    const tab = window.open(HOSTED_PAGE_URL, "_blank");
-    if (!tab) {
-      showError("Popup was blocked. Please allow popups for this extension.");
-    }
+    window.open(HOSTED_PAGE_URL, "_blank");
+    const pollInterval = setInterval(async () => {
+      const result = await chrome.storage.local.get("connectedAddress");
+      if (result.connectedAddress) {
+        clearInterval(pollInterval);
+        isConnecting = false;
+        appState.address = result.connectedAddress;
+        showConnected(result.connectedAddress);
+        navigate("connected");
+      }
+    }, 1e3);
+    setTimeout(() => clearInterval(pollInterval), 3e5);
   }
   async function disconnectWallet() {
     await chrome.storage.local.remove("connectedAddress");
