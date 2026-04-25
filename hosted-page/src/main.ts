@@ -1,10 +1,6 @@
 /**
  * Hosted Web3Modal page for wallet connection
- * 
- * This page is opened by the extension when the user clicks "Connect Wallet".
- * It shows Web3Modal so the user can pick which wallet to use.
- * Once connected, the address is written to localStorage for the
- * content script (walletBridge.ts) to pick up and relay to chrome.storage.
+ * Always shows wallet picker — never auto-connects
  */
 
 import { createWeb3Modal, defaultConfig } from '@web3modal/ethers'
@@ -29,6 +25,52 @@ const metadata = {
   icons: ['https://governcrypto.xyz/logo.png']
 }
 
+// ── Clear ALL cached wallet sessions before creating modal ──────────
+function clearAllWalletSessions() {
+  // 1. Clear localStorage keys
+  try {
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && (
+        key.startsWith('wc@') ||
+        key.startsWith('W3M') ||
+        key.startsWith('@w3m') ||
+        key.startsWith('wagmi') ||
+        key.includes('walletconnect') ||
+        key.includes('web3modal') ||
+        key.includes('WALLETCONNECT') ||
+        key.includes('WEB3MODAL')
+      )) {
+        keysToRemove.push(key)
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k))
+    console.log('[GC] Cleared', keysToRemove.length, 'localStorage session keys')
+  } catch (e) {
+    console.log('[GC] localStorage clear error:', e)
+  }
+
+  // 2. Clear sessionStorage too
+  try {
+    sessionStorage.clear()
+  } catch (_) {}
+
+  // 3. Clear IndexedDB databases used by WalletConnect/Web3Modal
+  try {
+    const dbNames = ['WALLET_CONNECT_V2_INDEXED_DB', 'w3m', 'wc', 'wagmi']
+    dbNames.forEach(name => {
+      try { indexedDB.deleteDatabase(name) } catch (_) {}
+    })
+    console.log('[GC] Cleared IndexedDB sessions')
+  } catch (e) {
+    console.log('[GC] IndexedDB clear error:', e)
+  }
+}
+
+// Clear sessions BEFORE creating modal
+clearAllWalletSessions()
+
 const config = defaultConfig({
   metadata,
   enableEIP6963: true,
@@ -37,31 +79,6 @@ const config = defaultConfig({
   rpcUrl: 'https://cloudflare-eth.com',
   defaultChainId: 1
 })
-
-// Clear any cached WalletConnect / Web3Modal sessions BEFORE creating the modal
-// so it doesn't auto-reconnect to a previous wallet
-try {
-  const keysToRemove: string[] = []
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i)
-    if (key && (
-      key.startsWith('wc@') ||
-      key.startsWith('W3M') ||
-      key.startsWith('@w3m') ||
-      key.startsWith('wagmi') ||
-      key.includes('walletconnect') ||
-      key.includes('web3modal')
-    )) {
-      keysToRemove.push(key)
-    }
-  }
-  keysToRemove.forEach(k => localStorage.removeItem(k))
-  if (keysToRemove.length > 0) {
-    console.log('[GC] Cleared', keysToRemove.length, 'cached wallet session keys')
-  }
-} catch (e) {
-  console.log('[GC] Could not clear cached sessions:', e)
-}
 
 const modal = createWeb3Modal({
   ethersConfig: config,
@@ -90,48 +107,32 @@ function sendToExtension(address: string) {
   if (addressSent) return
   addressSent = true
 
-  console.log('[GC] Sending address to extension:', address)
+  console.log('[GC] Sending address:', address)
 
-  // Write to localStorage — the content script (walletBridge.ts) polls this
   try {
     localStorage.setItem('gc_wallet_address', address)
     localStorage.setItem('gc_wallet_ts', Date.now().toString())
-    console.log('[GC] Wrote address to localStorage')
-  } catch (e) {
-    console.error('[GC] Failed to write localStorage:', e)
-  }
+  } catch (_) {}
 
-  // Also dispatch a custom event for the content script to catch
   try {
     window.dispatchEvent(new CustomEvent('gc_wallet_connected', { detail: { address } }))
-    console.log('[GC] Dispatched gc_wallet_connected event')
-  } catch (e) {
-    console.error('[GC] Failed to dispatch event:', e)
-  }
+  } catch (_) {}
 
-  // If opened via window.open(), also postMessage to the opener
   if (window.opener) {
     try {
       window.opener.postMessage({ type: 'WALLET_CONNECTED', address }, '*')
-      console.log('[GC] Sent postMessage to opener')
-    } catch (e) {
-      console.error('[GC] Failed to postMessage:', e)
-    }
+    } catch (_) {}
   }
 
   updateStatus('Connected! You can close this tab.', 'success')
   setTimeout(() => window.close(), 1500)
 }
 
-// Listen for wallet connection
+// Listen for wallet connection — only after user clicks button
 modal.subscribeProvider(async ({ provider, address, isConnected }) => {
   console.log('[GC] Provider update:', { address, isConnected, userInitiated })
 
-  // Only process if user clicked the connect button
-  if (!userInitiated) {
-    console.log('[GC] Ignoring provider update (not user-initiated)')
-    return
-  }
+  if (!userInitiated) return
 
   if (isConnected && address) {
     updateStatus('Connected!', 'success')
@@ -153,60 +154,39 @@ modal.subscribeProvider(async ({ provider, address, isConnected }) => {
   }
 })
 
-// Button click — disconnect any existing session, then open the modal to the Connect view
+// Button click handler
 async function connectWallet() {
-  console.log('[GC] Connect clicked v2')
+  console.log('[GC] Connect clicked')
   addressSent = false
   userInitiated = true
   updateStatus('Opening wallet selector...', 'connecting')
 
-  // Disconnect any stale session first so the modal always shows the wallet picker
+  // Disconnect + clear again right before opening
   try {
     await modal.disconnect()
-    console.log('[GC] Disconnected existing session')
-  } catch (_) {
-    // No session to disconnect — that's fine
-  }
+  } catch (_) {}
 
-  // Open the modal to the Connect view (wallet selection UI)
-  modal.open({ view: 'Connect' })
+  clearAllWalletSessions()
+
+  // Small delay to ensure disconnect is fully processed
+  setTimeout(() => {
+    modal.open({ view: 'Connect' })
+  }, 300)
 }
 
-// ---- Initialization ----
-
 function init() {
-  console.log('[GC] Hosted page loaded')
-
-  // 1. Attach the connect button handler (MOST IMPORTANT)
-  try {
-    connectButton.addEventListener('click', connectWallet)
-    console.log('[GC] Connect button handler attached')
-  } catch (e) {
-    console.error('[GC] Failed to attach connect handler:', e)
-  }
-
-  // 2. Hide status initially
-  try {
-    statusDiv.classList.add('hidden')
-  } catch (_) {}
-
-  // 3. Disconnect any auto-connected session from a previous visit
-  try {
-    modal.disconnect().catch(() => {})
-    console.log('[GC] Cleared any auto-reconnected session')
-  } catch (_) {}
-
-  // 4. Load theme (non-blocking, errors silenced)
+  console.log('[GC] Page loaded')
+  connectButton.addEventListener('click', connectWallet)
+  statusDiv.classList.add('hidden')
   loadTheme()
 }
 
 async function loadTheme() {
   try {
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       const result = await chrome.storage.local.get('selectedTheme')
       applyTheme(result.selectedTheme || 'dark')
     } else {
-      console.log('[GC] Could not load theme (not in extension context)')
       applyTheme('dark')
     }
   } catch (_) {
@@ -218,21 +198,14 @@ function applyTheme(theme: string) {
   document.body.className = `theme-${theme}`
 }
 
-// Listen for theme changes — only in extension context
 try {
-  if (
-    typeof chrome !== 'undefined' &&
-    chrome.runtime &&
-    chrome.runtime.onMessage &&
-    typeof chrome.runtime.onMessage.addListener === 'function'
-  ) {
+  if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage?.addListener) {
     chrome.runtime.onMessage.addListener((message: any) => {
       if (message.type === 'THEME_CHANGED') applyTheme(message.theme)
     })
   }
 } catch (_) {}
 
-// Run init when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init)
 } else {
