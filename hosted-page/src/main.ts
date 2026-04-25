@@ -1,6 +1,6 @@
 /**
  * Hosted Web3Modal page for wallet connection
- * Always shows wallet picker — user must manually choose wallet
+ * Recreates modal fresh on every click to prevent cached session card
  */
 
 import { createWeb3Modal, defaultConfig } from '@web3modal/ethers'
@@ -25,30 +25,12 @@ const metadata = {
   icons: ['https://governcrypto.xyz/logo.png']
 }
 
-const config = defaultConfig({
-  metadata,
-  // Disable auto-detection of injected wallets to prevent auto-connect
-  enableEIP6963: false,
-  enableInjected: false,
-  enableCoinbase: false,
-  rpcUrl: 'https://cloudflare-eth.com',
-  defaultChainId: 1
-})
-
-const modal = createWeb3Modal({
-  ethersConfig: config,
-  chains,
-  projectId: PROJECT_ID,
-  enableAnalytics: false
-})
-
 // UI Elements
 const connectButton = document.getElementById('connect-btn') as HTMLButtonElement
 const statusDiv = document.getElementById('status') as HTMLElement
 const statusText = document.getElementById('status-text') as HTMLElement
 
 let addressSent = false
-let userInitiated = false
 
 function updateStatus(message: string, type: 'connecting' | 'success' | 'error' = 'connecting') {
   statusDiv.className = `status ${type}`
@@ -83,48 +65,88 @@ function sendToExtension(address: string) {
   setTimeout(() => window.close(), 1500)
 }
 
-// Listen for wallet connection — only after user clicks button
-modal.subscribeProvider(async ({ provider, address, isConnected }) => {
-  console.log('[GC] Provider update:', { address, isConnected, userInitiated })
-
-  if (!userInitiated) return
-
-  if (isConnected && address) {
-    updateStatus('Connected!', 'success')
-    sendToExtension(address)
-    return
-  }
-
-  if (isConnected && provider && !address) {
-    try {
-      const ethersProvider = new BrowserProvider(provider)
-      const accounts = await ethersProvider.send('eth_requestAccounts', [])
-      if (accounts[0]) {
-        updateStatus('Connected!', 'success')
-        sendToExtension(accounts[0])
-      }
-    } catch (err) {
-      console.error('[GC] Failed to get accounts:', err)
-    }
-  }
-})
-
-// Button click — always show wallet picker
-async function connectWallet() {
-  console.log('[GC] Connect clicked')
-  addressSent = false
-  userInitiated = true
-  updateStatus('Opening wallet selector...', 'connecting')
-
-  // Disconnect first, wait for it to complete, then open picker
+function clearWalletCache() {
+  // Clear all WalletConnect/Web3Modal storage
   try {
-    await modal.disconnect()
+    const keys: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && (k.startsWith('wc@') || k.startsWith('W3M') || k.startsWith('@w3m') ||
+        k.includes('walletconnect') || k.includes('web3modal'))) {
+        keys.push(k)
+      }
+    }
+    keys.forEach(k => localStorage.removeItem(k))
   } catch (_) {}
 
-  // Wait 500ms to ensure disconnect is fully processed before opening
-  await new Promise(resolve => setTimeout(resolve, 500))
+  try { sessionStorage.clear() } catch (_) {}
 
+  try {
+    ['WALLET_CONNECT_V2_INDEXED_DB', 'w3m', 'wc', 'wagmi'].forEach(db => {
+      try { indexedDB.deleteDatabase(db) } catch (_) {}
+    })
+  } catch (_) {}
+}
+
+// Button click — create a FRESH modal every time, no cached state
+async function connectWallet() {
+  console.log('[GC] Connect clicked - creating fresh modal')
+  addressSent = false
+  connectButton.disabled = true
+  updateStatus('Opening wallet selector...', 'connecting')
+
+  // Clear all cached sessions first
+  clearWalletCache()
+
+  // Small wait for cache clear to complete
+  await new Promise(r => setTimeout(r, 200))
+
+  // Create a brand new modal instance (no cached state)
+  const config = defaultConfig({
+    metadata,
+    enableEIP6963: false,
+    enableInjected: false,
+    enableCoinbase: false,
+    rpcUrl: 'https://cloudflare-eth.com',
+    defaultChainId: 1
+  })
+
+  const modal = createWeb3Modal({
+    ethersConfig: config,
+    chains,
+    projectId: PROJECT_ID,
+    enableAnalytics: false
+  })
+
+  // Subscribe to connection on this fresh modal
+  modal.subscribeProvider(async ({ provider, address, isConnected }) => {
+    console.log('[GC] Provider update:', { address, isConnected })
+
+    if (isConnected && address) {
+      updateStatus('Connected!', 'success')
+      sendToExtension(address)
+      return
+    }
+
+    if (isConnected && provider && !address) {
+      try {
+        const ethersProvider = new BrowserProvider(provider)
+        const accounts = await ethersProvider.send('eth_requestAccounts', [])
+        if (accounts[0]) {
+          updateStatus('Connected!', 'success')
+          sendToExtension(accounts[0])
+        }
+      } catch (err) {
+        console.error('[GC] Failed to get accounts:', err)
+      }
+    }
+  })
+
+  // Open directly to Connect view
   modal.open({ view: 'Connect' })
+
+  // Re-enable button after short delay
+  setTimeout(() => { connectButton.disabled = false }, 1000)
 }
 
 function init() {
