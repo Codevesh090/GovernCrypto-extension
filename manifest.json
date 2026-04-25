@@ -14,7 +14,10 @@
     "https://api.elevenlabs.io/*",
     "https://seq.snapshot.org/*",
     "https://hub.snapshot.org/*",
-    "https://governcrypto.xyz/*"
+    "https://governcrypto.xyz/*",
+    "https://*.walletconnect.com/*",
+    "https://*.walletconnect.org/*",
+    "https://api.web3modal.com/*"
   ],
   "action": {
     "default_title": "GovernCrypto",

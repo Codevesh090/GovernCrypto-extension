@@ -1,12 +1,12 @@
 /**
  * Hosted Web3Modal page for wallet connection
- * Uses subscribeProvider to detect actual wallet connection
+ * WalletConnect-only implementation (no fallbacks)
  */
 
 import { createWeb3Modal, defaultConfig } from '@web3modal/ethers'
 import { BrowserProvider } from 'ethers'
 
-const PROJECT_ID = 'YOUR_WALLETCONNECT_PROJECT_ID'
+const PROJECT_ID = 'd34e919498204940293ed0ae298c7bc0'
 
 const chains = [
   {
@@ -19,10 +19,10 @@ const chains = [
 ]
 
 const metadata = {
-  name: 'Snapshot Governance Voting',
-  description: 'Connect your wallet to participate in governance',
-  url: window.location.origin,
-  icons: ['https://avatars.githubusercontent.com/u/37784886']
+  name: 'GovernCrypto',
+  description: 'Connect your wallet to participate in DAO governance',
+  url: 'https://governcrypto.xyz',
+  icons: ['https://governcrypto.xyz/logo.png']
 }
 
 const config = defaultConfig({
@@ -47,8 +47,8 @@ const statusDiv = document.getElementById('status') as HTMLElement
 const statusText = document.getElementById('status-text') as HTMLElement
 
 // Flags
-let addressSent = false    // prevent duplicate sends
-let userInitiated = false  // only react to provider after user clicks connect
+let addressSent = false
+let userInitiated = false
 
 function updateStatus(message: string, type: 'connecting' | 'success' | 'error' = 'connecting') {
   statusDiv.className = `status ${type}`
@@ -62,22 +62,33 @@ function sendToExtension(address: string) {
   if (addressSent) return
   addressSent = true
 
+  console.log('[GovernCrypto] Sending address to extension:', address)
+
   // Write to localStorage — content script will bridge to chrome.storage
   try {
     localStorage.setItem('gc_wallet_address', address)
     localStorage.setItem('gc_wallet_ts', Date.now().toString())
-  } catch (_) {}
+    console.log('[GovernCrypto] Saved to localStorage')
+  } catch (err) {
+    console.error('[GovernCrypto] localStorage error:', err)
+  }
 
-  // Dispatch custom event for content script to pick up immediately
+  // Dispatch custom event for content script
   try {
     window.dispatchEvent(new CustomEvent('gc_wallet_connected', { detail: { address } }))
-  } catch (_) {}
+    console.log('[GovernCrypto] Dispatched custom event')
+  } catch (err) {
+    console.error('[GovernCrypto] Event dispatch error:', err)
+  }
 
-  // Try postMessage to opener as additional fallback
+  // Try postMessage to opener
   if (window.opener) {
     try {
       window.opener.postMessage({ type: 'WALLET_CONNECTED', address }, '*')
-    } catch (_) {}
+      console.log('[GovernCrypto] Sent postMessage to opener')
+    } catch (err) {
+      console.error('[GovernCrypto] postMessage error:', err)
+    }
   }
 
   updateStatus('Connected! You can close this tab.', 'success')
@@ -86,68 +97,69 @@ function sendToExtension(address: string) {
 
 function sendError(msg: string) {
   if (addressSent) return
-
-  console.log('Sending error to extension:', msg)
+  console.error('[GovernCrypto] Error:', msg)
   if (window.opener) {
     window.opener.postMessage({ type: 'CONNECTION_ERROR', error: msg }, '*')
   }
   setTimeout(() => window.close(), 500)
 }
 
-// Listen for wallet connection via subscribeProvider
-// Gated by userInitiated so cached sessions don't auto-fire on page load
+// Subscribe to provider changes
 modal.subscribeProvider(async ({ provider, address, isConnected }) => {
-  console.log('Provider update:', { address, isConnected })
+  console.log('[GovernCrypto] Provider update:', { address, isConnected, userInitiated })
 
-  // Ignore any cached auto-reconnect that fires before user clicks connect
+  // Ignore cached sessions on page load
   if (!userInitiated) {
-    console.log('Ignoring cached session on load')
+    console.log('[GovernCrypto] Ignoring cached session')
     return
   }
 
   if (isConnected && address) {
-    console.log('Wallet connected! Address:', address)
+    console.log('[GovernCrypto] Wallet connected with address:', address)
     updateStatus('Connected! Sending to extension...', 'success')
     sendToExtension(address)
     return
   }
 
-  // Provider exists but address not yet available — fetch it
+  // Provider exists but address not yet available
   if (isConnected && provider && !address) {
     try {
+      console.log('[GovernCrypto] Fetching address from provider...')
       const ethersProvider = new BrowserProvider(provider)
       const accounts = await ethersProvider.send('eth_requestAccounts', [])
       const fetchedAddress = accounts[0]
       if (fetchedAddress) {
-        console.log('Fetched address:', fetchedAddress)
+        console.log('[GovernCrypto] Fetched address:', fetchedAddress)
         updateStatus('Connected! Sending to extension...', 'success')
         sendToExtension(fetchedAddress)
       }
     } catch (err) {
-      console.error('Failed to fetch accounts:', err)
+      console.error('[GovernCrypto] Failed to fetch accounts:', err)
+      updateStatus('Failed to get wallet address', 'error')
     }
   }
 })
 
 async function connectWallet() {
-  // Reset flags for fresh connection
+  console.log('[GovernCrypto] Connect button clicked')
   addressSent = false
   userInitiated = true
+  connectButton.disabled = true
 
-  // Disconnect any cached session so Web3Modal shows the wallet picker
+  // Disconnect any cached session
   try {
     await modal.disconnect()
-  } catch (_) {
-    // nothing to disconnect
+    console.log('[GovernCrypto] Disconnected cached session')
+  } catch (err) {
+    console.log('[GovernCrypto] No cached session to disconnect')
   }
 
   try {
-    connectButton.disabled = true
-    updateStatus('Opening wallet selection...', 'connecting')
-    console.log('Opening Web3Modal...')
+    updateStatus('Opening WalletConnect...', 'connecting')
+    console.log('[GovernCrypto] Opening Web3Modal...')
     await modal.open()
   } catch (error) {
-    console.error('Failed to open Web3Modal:', error)
+    console.error('[GovernCrypto] Web3Modal error:', error)
     updateStatus('Failed to open wallet selection', 'error')
     sendError('Failed to open wallet selection')
     connectButton.disabled = false
@@ -155,11 +167,11 @@ async function connectWallet() {
 }
 
 window.addEventListener('load', () => {
-  console.log('Hosted page loaded')
+  console.log('[GovernCrypto] Hosted page loaded')
+  console.log('[GovernCrypto] Project ID:', PROJECT_ID)
+  console.log('[GovernCrypto] Origin:', window.location.origin)
   connectButton.addEventListener('click', connectWallet)
   statusDiv.classList.add('hidden')
-  
-  // Load and apply saved theme
   loadTheme()
 })
 
@@ -170,7 +182,7 @@ async function loadTheme() {
     const theme = result.selectedTheme || 'dark'
     applyTheme(theme)
   } catch (err) {
-    console.log('Could not load theme (not in extension context)')
+    console.log('[GovernCrypto] Could not load theme (not in extension context)')
   }
 }
 
@@ -179,11 +191,13 @@ function applyTheme(theme: string) {
   document.body.classList.add(`theme-${theme}`)
 }
 
-// Listen for theme changes from extension
-chrome.runtime?.onMessage.addListener((message) => {
-  if (message.type === 'THEME_CHANGED') {
-    applyTheme(message.theme)
-  }
-})
+// Listen for theme changes
+if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === 'THEME_CHANGED') {
+      applyTheme(message.theme)
+    }
+  })
+}
 
 export {}
