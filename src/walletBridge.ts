@@ -1,58 +1,57 @@
 /**
- * Content script injected into governcrypto.xyz/connect and /sign
- * Watches for wallet connection and bridges to chrome.storage
+ * Content script — injected at document_start on governcrypto.xyz
+ * Polls localStorage for wallet data and sends to extension via chrome.runtime.sendMessage
+ * This is the PRIMARY channel — no window.opener, no postMessage
  */
 
+const STORAGE_KEY = 'governcrypto_wallet'
 const ETH_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 
-let lastCheckedTs = ''
+let sent = false
 
-function isValidAddress(address: string): boolean {
-  return ETH_ADDRESS_REGEX.test(address)
-}
+function checkWalletData(): void {
+  if (sent) return
 
-function checkAndBridge(): void {
   try {
-    const address = localStorage.getItem('gc_wallet_address')
-    const ts = localStorage.getItem('gc_wallet_ts')
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
 
-    if (!address || !ts || ts === lastCheckedTs) return
+    const parsed = JSON.parse(raw)
+    const { address, timestamp } = parsed
 
-    // Validate address format before storing
-    if (!isValidAddress(address)) {
-      localStorage.removeItem('gc_wallet_address')
-      localStorage.removeItem('gc_wallet_ts')
+    // Validate address format
+    if (!address || !ETH_ADDRESS_REGEX.test(address)) {
+      localStorage.removeItem(STORAGE_KEY)
       return
     }
 
-    // Only process recent connections (within last 30 seconds)
-    const age = Date.now() - parseInt(ts)
-    if (age > 30000) {
-      localStorage.removeItem('gc_wallet_address')
-      localStorage.removeItem('gc_wallet_ts')
+    // Only process recent connections (within 30 seconds)
+    if (!timestamp || Date.now() - timestamp > 30000) {
+      localStorage.removeItem(STORAGE_KEY)
       return
     }
 
-    lastCheckedTs = ts
+    sent = true
 
-    // Write directly to chrome.storage from content script context
-    chrome.storage.local.set({ connectedAddress: address }, () => {
-      localStorage.removeItem('gc_wallet_address')
-      localStorage.removeItem('gc_wallet_ts')
+    // Send to extension background/popup
+    chrome.runtime.sendMessage({
+      type: 'WALLET_CONNECTED',
+      payload: { address, timestamp }
     })
+
+    // Clean up localStorage
+    localStorage.removeItem(STORAGE_KEY)
+
+    // Close the tab after success
+    setTimeout(() => window.close(), 500)
+
   } catch (e) {
-    // ignore
+    // ignore parse errors
   }
 }
 
-// Listen for custom events dispatched by the page
-window.addEventListener('gc_wallet_connected', (e: any) => {
-  const address = e.detail?.address
-  if (address && isValidAddress(address)) {
-    chrome.storage.local.set({ connectedAddress: address })
-  }
-})
+// Poll every 500ms
+const interval = setInterval(checkWalletData, 500)
 
-// Poll every 300ms, stop after 2 minutes
-const interval = setInterval(checkAndBridge, 300)
-setTimeout(() => clearInterval(interval), 120000)
+// Stop polling after 5 minutes
+setTimeout(() => clearInterval(interval), 300000)

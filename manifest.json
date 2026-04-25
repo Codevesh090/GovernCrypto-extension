@@ -35,9 +35,9 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://governcrypto.xyz/connect*", "https://governcrypto.xyz/sign*"],
+      "matches": ["https://governcrypto.xyz/*"],
       "js": ["wallet-bridge.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [

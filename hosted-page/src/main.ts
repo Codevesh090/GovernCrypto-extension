@@ -1,12 +1,16 @@
 /**
  * Hosted Web3Modal page for wallet connection
- * Modal created once on load for instant open, session cleared on every click
+ * 
+ * PRIMARY channel: localStorage → content script → chrome.runtime.sendMessage
+ * NO window.opener.postMessage — removed completely
  */
 
 import { createWeb3Modal, defaultConfig } from '@web3modal/ethers'
 import { BrowserProvider } from 'ethers'
 
 const PROJECT_ID = 'd34e919498204940293ed0ae298c7bc0'
+const STORAGE_KEY = 'governcrypto_wallet'
+const ETH_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 
 const chains = [
   {
@@ -25,33 +29,15 @@ const metadata = {
   icons: ['https://governcrypto.xyz/logo.png']
 }
 
-const ETH_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
-
-// Clear cached sessions on page load before creating modal
-function clearWalletCache() {
-  try {
-    const keys: string[] = []
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i)
-      if (k && (k.startsWith('wc@') || k.startsWith('W3M') || k.startsWith('@w3m') ||
-        k.includes('walletconnect') || k.includes('web3modal'))) {
-        keys.push(k)
-      }
-    }
-    keys.forEach(k => localStorage.removeItem(k))
-  } catch (_) {}
+// Clear any stale wallet data on page load
+function clearStaleData() {
+  try { localStorage.removeItem(STORAGE_KEY) } catch (_) {}
   try { sessionStorage.clear() } catch (_) {}
-  try {
-    ['WALLET_CONNECT_V2_INDEXED_DB', 'w3m', 'wc', 'wagmi'].forEach(db => {
-      try { indexedDB.deleteDatabase(db) } catch (_) {}
-    })
-  } catch (_) {}
 }
 
-// Clear on page load
-clearWalletCache()
+clearStaleData()
 
-// Create modal ONCE on page load — instant open on button click
+// Create modal once on page load for instant open
 const config = defaultConfig({
   metadata,
   enableEIP6963: true,
@@ -68,46 +54,39 @@ const modal = createWeb3Modal({
   enableAnalytics: false
 })
 
-// Disconnect any auto-restored session immediately after creation
+// Disconnect any auto-restored session
 modal.disconnect().catch(() => {})
 
 // UI Elements
 const connectButton = document.getElementById('connect-btn') as HTMLButtonElement
 
 let addressSent = false
+let userInitiated = false
 
-function sendToExtension(address: string) {
+function saveWalletToStorage(address: string): void {
   if (addressSent) return
-  // Validate address format
   if (!ETH_ADDRESS_REGEX.test(address)) return
   addressSent = true
 
+  // Save to localStorage — content script will pick this up
   try {
-    localStorage.setItem('gc_wallet_address', address)
-    localStorage.setItem('gc_wallet_ts', Date.now().toString())
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      address,
+      timestamp: Date.now()
+    }))
   } catch (_) {}
 
-  try {
-    window.dispatchEvent(new CustomEvent('gc_wallet_connected', { detail: { address } }))
-  } catch (_) {}
-
-  if (window.opener) {
-    try {
-      window.opener.postMessage({ type: 'WALLET_CONNECTED', address }, 'https://governcrypto.xyz')
-    } catch (_) {}
-  }
-
-  setTimeout(() => window.close(), 1500)
+  // Tab will be closed by content script after it reads the data
+  // Fallback: close after 2 seconds if content script doesn't close it
+  setTimeout(() => window.close(), 2000)
 }
 
-// Subscribe to provider — only act after user clicks
-let userInitiated = false
-
+// Subscribe to provider changes — only act after user clicks
 modal.subscribeProvider(async ({ provider, address, isConnected }) => {
   if (!userInitiated) return
 
   if (isConnected && address) {
-    sendToExtension(address)
+    saveWalletToStorage(address)
     return
   }
 
@@ -115,22 +94,23 @@ modal.subscribeProvider(async ({ provider, address, isConnected }) => {
     try {
       const ethersProvider = new BrowserProvider(provider)
       const accounts = await ethersProvider.send('eth_requestAccounts', [])
-      if (accounts[0]) sendToExtension(accounts[0])
+      if (accounts[0]) saveWalletToStorage(accounts[0])
     } catch (_) {}
   }
 })
 
-// Button click — disconnect stale session then open instantly
+// Button click — disconnect stale session then open wallet picker
 async function connectWallet() {
   userInitiated = false
   connectButton.disabled = true
 
-  // Disconnect any stale session
+  // Clear stale data and disconnect
+  clearStaleData()
   try { await modal.disconnect() } catch (_) {}
 
   userInitiated = true
 
-  // Open immediately — modal already initialized, opens instantly
+  // Open wallet picker instantly
   modal.open({ view: 'Connect' })
 
   setTimeout(() => { connectButton.disabled = false }, 800)
