@@ -27,18 +27,8 @@ const metadata = {
 
 // UI Elements
 const connectButton = document.getElementById('connect-btn') as HTMLButtonElement
-const statusDiv = document.getElementById('status') as HTMLElement
-const statusText = document.getElementById('status-text') as HTMLElement
 
 let addressSent = false
-
-function updateStatus(message: string, type: 'connecting' | 'success' | 'error' = 'connecting') {
-  statusDiv.className = `status ${type}`
-  statusText.innerHTML = type === 'connecting'
-    ? `<span class="loading-spinner"></span> ${message}`
-    : message
-  statusDiv.classList.remove('hidden')
-}
 
 function sendToExtension(address: string) {
   if (addressSent) return
@@ -61,7 +51,6 @@ function sendToExtension(address: string) {
     } catch (_) {}
   }
 
-  updateStatus('Connected! You can close this tab.', 'success')
   setTimeout(() => window.close(), 1500)
 }
 
@@ -93,7 +82,6 @@ async function connectWallet() {
   console.log('[GC] Connect clicked - creating fresh modal')
   addressSent = false
   connectButton.disabled = true
-  updateStatus('Opening wallet selector...', 'connecting')
 
   // Clear all cached sessions first
   clearWalletCache()
@@ -123,7 +111,6 @@ async function connectWallet() {
     console.log('[GC] Provider update:', { address, isConnected })
 
     if (isConnected && address) {
-      updateStatus('Connected!', 'success')
       sendToExtension(address)
       return
     }
@@ -133,7 +120,6 @@ async function connectWallet() {
         const ethersProvider = new BrowserProvider(provider)
         const accounts = await ethersProvider.send('eth_requestAccounts', [])
         if (accounts[0]) {
-          updateStatus('Connected!', 'success')
           sendToExtension(accounts[0])
         }
       } catch (err) {
@@ -152,7 +138,6 @@ async function connectWallet() {
 function init() {
   console.log('[GC] Page loaded')
   connectButton.addEventListener('click', connectWallet)
-  statusDiv.classList.add('hidden')
   loadTheme()
 }
 
