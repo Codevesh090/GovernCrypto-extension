@@ -254,15 +254,29 @@ Vote confirmed on-chain (gasless)
 
 ## Screenshots
 
-> Add screenshots to a `screenshots/` folder and reference them here.
+### Setup — Enter API Keys
+![Setup Screen](screenshots/setup.png)
 
-```markdown
-![Extension Popup](screenshots/popup.png)
-![Proposals List](screenshots/proposals.png)
-![AI Summary](screenshots/summary.png)
-![Voice Assistant](screenshots/voice.png)
+### Connect Wallet
 ![Connect Wallet](screenshots/connect.png)
-```
+
+### Connected Wallet
+![Connected Wallet](screenshots/connected.png)
+
+### Proposals List with AI Summary
+![AI Summary](screenshots/ai-summary.png)
+
+### Proposal Detail — Dark Theme
+![Proposal Detail Dark](screenshots/proposal-detail-dark.png)
+
+### Proposal Detail — Ocean Theme
+![Proposal Detail Ocean](screenshots/proposal-detail-ocean.png)
+
+### Voice AI Assistant — Listening
+![Voice Assistant](screenshots/voice-listening.png)
+
+### Vote Signing Page
+![Vote Signing](screenshots/vote-signing.png)
 
 ---
 
