@@ -260,9 +260,6 @@ Vote confirmed on-chain (gasless)
 ### Connect Wallet
 ![Connect Wallet](screenshots/connect.png)
 
-### Connected Wallet
-![Connected Wallet](screenshots/connected.png)
-
 ### Proposals List with AI Summary
 ![AI Summary](screenshots/ai-summary.png)
 
