@@ -155,7 +155,7 @@ modal.subscribeProvider(async ({ provider, address, isConnected }) => {
 
 // Button click — disconnect any existing session, then open the modal to the Connect view
 async function connectWallet() {
-  console.log('[GC] Connect clicked')
+  console.log('[GC] Connect clicked v2')
   addressSent = false
   userInitiated = true
   updateStatus('Opening wallet selector...', 'connecting')
