@@ -95,14 +95,6 @@ function sendToExtension(address: string) {
   setTimeout(() => window.close(), 1500)
 }
 
-function sendError(msg: string) {
-  if (addressSent) return
-  console.error('[GovernCrypto] Error:', msg)
-  if (window.opener) {
-    window.opener.postMessage({ type: 'CONNECTION_ERROR', error: msg }, '*')
-  }
-  setTimeout(() => window.close(), 500)
-}
 
 // Subscribe to provider changes
 modal.subscribeProvider(async ({ provider, address, isConnected }) => {
@@ -145,25 +137,19 @@ async function connectWallet() {
   addressSent = false
   userInitiated = true
   connectButton.disabled = true
-
-  // Disconnect any cached session
-  try {
-    await modal.disconnect()
-    console.log('[GovernCrypto] Disconnected cached session')
-  } catch (err) {
-    console.log('[GovernCrypto] No cached session to disconnect')
-  }
+  updateStatus('Opening WalletConnect...', 'connecting')
 
   try {
-    updateStatus('Opening WalletConnect...', 'connecting')
     console.log('[GovernCrypto] Opening Web3Modal...')
     await modal.open()
   } catch (error) {
     console.error('[GovernCrypto] Web3Modal error:', error)
     updateStatus('Failed to open wallet selection', 'error')
-    sendError('Failed to open wallet selection')
     connectButton.disabled = false
   }
+
+  // Re-enable button after modal closes (user may dismiss without connecting)
+  connectButton.disabled = false
 }
 
 window.addEventListener('load', () => {
