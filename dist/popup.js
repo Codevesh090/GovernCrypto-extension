@@ -1848,8 +1848,8 @@ ${currentProposalContext}`;
   }
 
   // src/popup.ts
-  var HOSTED_PAGE_URL = "https://governcrypto.xyz/connect";
-  var TRUSTED_ORIGIN = "https://governcrypto.xyz";
+  var HOSTED_PAGE_URL = "http://localhost:3000";
+  var TRUSTED_ORIGIN = "http://localhost:3000";
   function updateOfflineBanner() {
     const banner = document.getElementById("offline-banner");
     if (!banner) return;

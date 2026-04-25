@@ -21,7 +21,7 @@ const chains = [
 const metadata = {
   name: 'GovernCrypto',
   description: 'Connect your wallet to participate in DAO governance',
-  url: 'https://governcrypto.xyz',
+  url: 'http://localhost:3000',
   icons: ['https://governcrypto.xyz/logo.png']
 }
 
@@ -92,9 +92,9 @@ async function connectWallet() {
   // Create a brand new modal instance (no cached state)
   const config = defaultConfig({
     metadata,
-    enableEIP6963: false,
-    enableInjected: false,
-    enableCoinbase: false,
+    enableEIP6963: true,
+    enableInjected: true,
+    enableCoinbase: true,
     rpcUrl: 'https://cloudflare-eth.com',
     defaultChainId: 1
   })
