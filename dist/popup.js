@@ -1848,8 +1848,8 @@ ${currentProposalContext}`;
   }
 
   // src/popup.ts
-  var HOSTED_PAGE_URL = "http://localhost:3000";
-  var TRUSTED_ORIGIN = "http://localhost:3000";
+  var HOSTED_PAGE_URL = "https://governcrypto.xyz/connect";
+  var TRUSTED_ORIGIN = "https://governcrypto.xyz";
   function updateOfflineBanner() {
     const banner = document.getElementById("offline-banner");
     if (!banner) return;
@@ -1991,9 +1991,10 @@ ${currentProposalContext}`;
   }
   window.addEventListener("message", async (event) => {
     if (event.origin !== TRUSTED_ORIGIN) return;
+    if (!event.data || typeof event.data !== "object") return;
     if (event.data?.type === "WALLET_CONNECTED") {
       const address = event.data.address;
-      if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      if (!address || typeof address !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
         showError("Invalid wallet address received.");
         return;
       }
@@ -2007,7 +2008,8 @@ ${currentProposalContext}`;
       }
     }
     if (event.data?.type === "CONNECTION_ERROR") {
-      showError(event.data.error || "Connection failed. Please try again.");
+      const errorMsg = typeof event.data.error === "string" ? event.data.error : "Connection failed.";
+      showError(errorMsg.slice(0, 200));
     }
   });
   chrome.storage.onChanged.addListener((changes, areaName) => {
