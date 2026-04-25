@@ -20,24 +20,30 @@
         return;
       }
       sent = true;
-      console.log("[Bridge] Found wallet, sending to extension:", address);
-      chrome.runtime.sendMessage(
-        { type: "WALLET_CONNECTED", payload: { address, timestamp } },
-        (_response) => {
-          if (chrome.runtime.lastError) {
-            console.log("[Bridge] sendMessage error:", chrome.runtime.lastError.message);
-            chrome.storage.local.set({ connectedAddress: address });
-          } else {
-            console.log("[Bridge] Message delivered to extension");
-          }
+      console.log("[Bridge] Found wallet data:", address);
+      chrome.storage.local.set({ connectedAddress: address }, () => {
+        if (chrome.runtime.lastError) {
+          console.log("[Bridge] storage.set error:", chrome.runtime.lastError.message);
+        } else {
+          console.log("[Bridge] Written to chrome.storage.local successfully");
         }
-      );
+      });
+      try {
+        chrome.runtime.sendMessage(
+          { type: "WALLET_CONNECTED", payload: { address, timestamp } },
+          () => {
+            void chrome.runtime.lastError;
+          }
+        );
+      } catch (_) {
+      }
       localStorage.removeItem(STORAGE_KEY);
       setTimeout(() => window.close(), 800);
     } catch (e) {
       console.log("[Bridge] Error:", e);
     }
   }
+  console.log("[Bridge] Content script loaded on:", window.location.href);
   var interval = setInterval(checkWalletData, 500);
   setTimeout(() => clearInterval(interval), 3e5);
 })();
