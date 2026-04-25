@@ -35,7 +35,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://governcrypto.xyz/*"],
+      "matches": [
+        "https://governcrypto.xyz/*",
+        "https://www.governcrypto.xyz/*"
+      ],
       "js": ["wallet-bridge.js"],
       "run_at": "document_idle"
     }

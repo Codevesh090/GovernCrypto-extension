@@ -72,7 +72,6 @@ function saveWalletToStorage(address: string): void {
   try {
     const walletData = JSON.stringify({ address, timestamp: Date.now() })
     localStorage.setItem(STORAGE_KEY, walletData)
-    console.log('[GC] Saved to localStorage:', STORAGE_KEY, address)
   } catch (_) {}
 
   // Tab will be closed by content script after it reads the data

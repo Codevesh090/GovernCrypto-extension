@@ -176,26 +176,19 @@ async function selectWallet(wallet: EIP6963ProviderDetail): Promise<void> {
 
   try {
     let accounts: string[] = await wallet.provider.request({ method: 'eth_accounts' });
-    console.log('[Wallet] eth_accounts result:', accounts);
     if (!accounts || accounts.length === 0) {
       accounts = await wallet.provider.request({ method: 'eth_requestAccounts' });
-      console.log('[Wallet] eth_requestAccounts result:', accounts);
     }
     if (!accounts || accounts.length === 0) throw new Error('No account found.');
 
     selectedProvider = wallet.provider;
     selectedAddress  = accounts[0];
 
-    console.log('[Wallet] Selected address:', selectedAddress);
-    console.log('[Wallet] Address length:', selectedAddress.length);
-    console.log('[Wallet] Valid format:', /^0x[a-fA-F0-9]{40}$/.test(selectedAddress));
-
     setStatus(`Connected: ${selectedAddress.slice(0, 6)}...${selectedAddress.slice(-4)}`, 'success');
     btnSign.disabled = false;
     btnSign.textContent = `Sign with ${wallet.info.name}`;
 
   } catch (err: any) {
-    console.error('[Wallet] Connection error:', err);
     showError(err.message || 'Wallet connection failed.');
     walletPickerEl.style.display = 'block';
   }
@@ -224,13 +217,6 @@ async function signAndSubmit(): Promise<void> {
     metadata:  '{}'
   };
 
-  console.log('[Sign] Address:', selectedAddress);
-  console.log('[Sign] Space:', proposal.space.id);
-  console.log('[Sign] Proposal ID:', proposal.id);
-  console.log('[Sign] Choice:', choiceIndex);
-  console.log('[Sign] Timestamp:', timestamp);
-  console.log('[Sign] Full message:', JSON.stringify(message, null, 2));
-
   const typedData = {
     domain:      DOMAIN,
     types:       VOTE_TYPES,
@@ -238,17 +224,13 @@ async function signAndSubmit(): Promise<void> {
     message
   };
 
-  console.log('[Sign] TypedData:', JSON.stringify(typedData, null, 2));
-
   let signature: string;
   try {
     signature = await selectedProvider.request({
       method: 'eth_signTypedData_v4',
       params: [selectedAddress, JSON.stringify(typedData)]
     });
-    console.log('[Sign] Signature obtained:', signature?.slice(0, 20) + '...');
   } catch (err: any) {
-    console.error('[Sign] Signing error:', err);
     if (err.code === 4001 || err.message?.toLowerCase().includes('rejected')) {
       showError('Signature rejected. Your vote was not submitted.');
     } else {
@@ -259,18 +241,11 @@ async function signAndSubmit(): Promise<void> {
 
   setStatus('Submitting vote to Snapshot...', 'loading');
 
-  // Snapshot relay expects: address, sig, data (with domain, types, message)
   const relayPayload = {
     address: selectedAddress,
     sig:     signature,
-    data:    {
-      domain:      DOMAIN,
-      types:       VOTE_TYPES,
-      message
-    }
+    data:    { domain: DOMAIN, types: VOTE_TYPES, message }
   };
-
-  console.log('[Sign] Relay payload:', JSON.stringify(relayPayload, null, 2));
 
   try {
     const res = await fetch(SNAPSHOT_RELAY, {
@@ -280,12 +255,9 @@ async function signAndSubmit(): Promise<void> {
     });
 
     const json = await res.json().catch(() => ({}));
-    console.log('[Sign] Relay response status:', res.status);
-    console.log('[Sign] Relay response body:', JSON.stringify(json, null, 2));
 
     if (!res.ok || json.error) {
       const errMsg = (json.error || `Relay error ${res.status}`).toString();
-      console.error('[Sign] Relay error:', errMsg);
       if (errMsg.toLowerCase().includes('already voted')) {
         setStatus('You have already voted on this proposal.', 'error');
       } else if (errMsg.toLowerCase().includes('no name for address')) {
@@ -296,7 +268,6 @@ async function signAndSubmit(): Promise<void> {
       return;
     }
 
-    console.log('[Sign] Vote submitted successfully!', json);
     setStatus('Vote submitted successfully ✅', 'success');
     btnSign.textContent = 'Voted!';
 
@@ -306,8 +277,7 @@ async function signAndSubmit(): Promise<void> {
 
     setTimeout(() => window.close(), 2000);
 
-  } catch (err: any) {
-    console.error('[Sign] Network error:', err);
+  } catch (_err: any) {
     showError('Network error. Please try again.');
   }
 }

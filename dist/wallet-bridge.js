@@ -20,12 +20,8 @@
         return;
       }
       sent = true;
-      console.log("[Bridge] Found wallet data:", address);
       chrome.storage.local.set({ connectedAddress: address }, () => {
         if (chrome.runtime.lastError) {
-          console.log("[Bridge] storage.set error:", chrome.runtime.lastError.message);
-        } else {
-          console.log("[Bridge] Written to chrome.storage.local successfully");
         }
       });
       try {
@@ -39,11 +35,9 @@
       }
       localStorage.removeItem(STORAGE_KEY);
       setTimeout(() => window.close(), 800);
-    } catch (e) {
-      console.log("[Bridge] Error:", e);
+    } catch (_) {
     }
   }
-  console.log("[Bridge] Content script loaded on:", window.location.href);
   var interval = setInterval(checkWalletData, 500);
   setTimeout(() => clearInterval(interval), 3e5);
 })();

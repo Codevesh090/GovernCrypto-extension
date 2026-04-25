@@ -1,7 +1,6 @@
 /**
  * Content script — injected on governcrypto.xyz
  * Polls localStorage and writes directly to chrome.storage.local
- * Also sends runtime message as secondary channel
  */
 
 const STORAGE_KEY = 'governcrypto_wallet'
@@ -30,18 +29,11 @@ function checkWalletData(): void {
     }
 
     sent = true
-    console.log('[Bridge] Found wallet data:', address)
 
-    // PRIMARY: Write directly to chrome.storage.local
     chrome.storage.local.set({ connectedAddress: address }, () => {
-      if (chrome.runtime.lastError) {
-        console.log('[Bridge] storage.set error:', chrome.runtime.lastError.message)
-      } else {
-        console.log('[Bridge] Written to chrome.storage.local successfully')
-      }
+      if (chrome.runtime.lastError) { /* silent */ }
     })
 
-    // SECONDARY: Also send runtime message (wakes up background if needed)
     try {
       chrome.runtime.sendMessage(
         { type: 'WALLET_CONNECTED', payload: { address, timestamp } },
@@ -49,19 +41,11 @@ function checkWalletData(): void {
       )
     } catch (_) {}
 
-    // Clean up localStorage
     localStorage.removeItem(STORAGE_KEY)
-
-    // Close tab after storage write
     setTimeout(() => window.close(), 800)
 
-  } catch (e) {
-    console.log('[Bridge] Error:', e)
-  }
+  } catch (_) {}
 }
 
-console.log('[Bridge] Content script loaded on:', window.location.href)
-
-// Poll every 500ms
 const interval = setInterval(checkWalletData, 500)
 setTimeout(() => clearInterval(interval), 300000)
