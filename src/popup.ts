@@ -248,13 +248,11 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'local' && changes.connectedAddress) {
     const newAddress = changes.connectedAddress.newValue;
     if (newAddress) {
-      // console.log('Wallet connected via storage change:', newAddress);
       isConnecting = false;
       appState.address = newAddress;
-      // Navigate to connected screen regardless of current screen
-      if (appState.screen === 'connect') {
-        showConnected(newAddress);
-      }
+      // Update regardless of current screen state
+      showConnected(newAddress);
+      navigate('connected');
     }
   }
 });
@@ -329,11 +327,18 @@ async function saveApiKeys(): Promise<void> {
     await playIfEnabled('success');
     
     // Wait a moment then navigate
-    setTimeout(() => {
+    setTimeout(async () => {
       // Clear inputs after saving
       (document.getElementById('input-mistral-key') as HTMLInputElement).value = '';
       (document.getElementById('input-elevenlabs') as HTMLInputElement).value = '';
-      navigate('connect');
+      // Go back to connected if wallet already connected, otherwise connect screen
+      const result = await chrome.storage.local.get('connectedAddress');
+      if (result.connectedAddress) {
+        appState.address = result.connectedAddress;
+        navigate('connected');
+      } else {
+        navigate('connect');
+      }
     }, 1500);
     
   } catch (error) {
@@ -1870,6 +1875,12 @@ async function initialize() {
   disconnectBtn.addEventListener('click', async () => {
     await playIfEnabled('click');
     disconnectWallet();
+  });
+
+  // Update API Keys button
+  document.getElementById('btn-update-keys')!.addEventListener('click', async () => {
+    await playIfEnabled('click');
+    navigate('setup');
   });
 
   // Feature 2 button wiring

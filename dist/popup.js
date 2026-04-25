@@ -2011,9 +2011,8 @@ ${currentProposalContext}`;
       if (newAddress) {
         isConnecting = false;
         appState.address = newAddress;
-        if (appState.screen === "connect") {
-          showConnected(newAddress);
-        }
+        showConnected(newAddress);
+        navigate("connected");
       }
     }
   });
@@ -2065,10 +2064,16 @@ ${currentProposalContext}`;
       <div style="font-size: 10px;">Features will be enabled based on your API key permissions</div>
     `;
       await playIfEnabled("success");
-      setTimeout(() => {
+      setTimeout(async () => {
         document.getElementById("input-mistral-key").value = "";
         document.getElementById("input-elevenlabs").value = "";
-        navigate("connect");
+        const result = await chrome.storage.local.get("connectedAddress");
+        if (result.connectedAddress) {
+          appState.address = result.connectedAddress;
+          navigate("connected");
+        } else {
+          navigate("connect");
+        }
       }, 1500);
     } catch (error) {
       showSetupError("Failed to save API keys. Please try again.");
@@ -3169,6 +3174,10 @@ ${currentProposalContext}`;
     disconnectBtn.addEventListener("click", async () => {
       await playIfEnabled("click");
       disconnectWallet();
+    });
+    document.getElementById("btn-update-keys").addEventListener("click", async () => {
+      await playIfEnabled("click");
+      navigate("setup");
     });
     document.getElementById("btn-proposals").addEventListener("click", async () => {
       await playIfEnabled("click");
