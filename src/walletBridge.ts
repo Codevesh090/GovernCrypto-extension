@@ -1,30 +1,41 @@
 /**
  * Content script injected into governcrypto.xyz/connect and /sign
- * Bridges localStorage on the hosted page to chrome.storage
- * so the extension popup can detect wallet connection instantly
+ * Watches for wallet connection and bridges to chrome.storage
  */
 
+let lastCheckedTs = ''
+
 function checkAndBridge(): void {
-  const address = localStorage.getItem('gc_wallet_address');
-  const ts = localStorage.getItem('gc_wallet_ts');
+  try {
+    const address = localStorage.getItem('gc_wallet_address')
+    const ts = localStorage.getItem('gc_wallet_ts')
 
-  if (!address || !ts) return;
+    if (!address || !ts || ts === lastCheckedTs) return
 
-  // Only process recent connections (within last 30 seconds)
-  const age = Date.now() - parseInt(ts);
-  if (age > 30000) return;
+    // Only process recent connections (within last 60 seconds)
+    const age = Date.now() - parseInt(ts)
+    if (age > 60000) return
 
-  // Write to chrome.storage so the extension popup picks it up
-  chrome.storage.local.set({ connectedAddress: address }, () => {
-    // Clear the localStorage signal after bridging
-    localStorage.removeItem('gc_wallet_address');
-    localStorage.removeItem('gc_wallet_ts');
-  });
+    lastCheckedTs = ts
+
+    // Write directly to chrome.storage from content script context
+    chrome.storage.local.set({ connectedAddress: address }, () => {
+      localStorage.removeItem('gc_wallet_address')
+      localStorage.removeItem('gc_wallet_ts')
+    })
+  } catch (e) {
+    // ignore
+  }
 }
 
-// Check immediately and then every 500ms
-checkAndBridge();
-const interval = setInterval(checkAndBridge, 500);
+// Also listen for custom events dispatched by the page
+window.addEventListener('gc_wallet_connected', (e: any) => {
+  const address = e.detail?.address
+  if (address) {
+    chrome.storage.local.set({ connectedAddress: address })
+  }
+})
 
-// Stop after 5 minutes
-setTimeout(() => clearInterval(interval), 300000);
+// Poll every 300ms
+const interval = setInterval(checkAndBridge, 300)
+setTimeout(() => clearInterval(interval), 300000)
