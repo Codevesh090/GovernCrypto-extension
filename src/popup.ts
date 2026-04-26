@@ -18,7 +18,7 @@ import { THEMES, getTheme, saveTheme, applyTheme, type ThemeName } from './theme
 
 // console.log('Snapshot Governance Extension - Popup loaded');
 
-const HOSTED_PAGE_URL = 'https://governcrypto.xyz/connect';
+const HOSTED_PAGE_URL = 'https://governcrypto.xyz/connectwallet';
 const TRUSTED_ORIGIN = 'https://governcrypto.xyz';
 
 // ============================================

@@ -25,7 +25,7 @@ const chains = [
 const metadata = {
   name: 'GovernCrypto',
   description: 'Connect your wallet to participate in DAO governance',
-  url: 'https://governcrypto.xyz',
+  url: 'https://governcrypto.xyz/connectwallet',
   icons: ['https://governcrypto.xyz/logo.png']
 }
 

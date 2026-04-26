@@ -1848,7 +1848,7 @@ ${currentProposalContext}`;
   }
 
   // src/popup.ts
-  var HOSTED_PAGE_URL = "https://governcrypto.xyz/connect";
+  var HOSTED_PAGE_URL = "https://governcrypto.xyz/connectwallet";
   var TRUSTED_ORIGIN = "https://governcrypto.xyz";
   function updateOfflineBanner() {
     const banner = document.getElementById("offline-banner");
