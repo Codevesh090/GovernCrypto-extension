@@ -2,6 +2,8 @@
 
 > DAOs need voters. Voters need this.
 
+![GovernCrypto](screenshots/hero.png)
+
 GovernCrypto is a Chrome extension that turns DAO governance into a conversation. Connect your wallet, browse active proposals across 10+ major DAOs, get AI-powered summaries, ask questions by voice, and cast votes — all without leaving your browser.
 
 ---
