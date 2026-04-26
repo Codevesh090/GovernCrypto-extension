@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GovernCrypto — DAOs need voters. Voters need this.</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --red: #EF0606;
+      --red-dim: rgba(239,6,6,0.15);
+      --red-border: rgba(239,6,6,0.3);
+      --bg: #000;
+      --bg-card: #0a0a0a;
+      --border: rgba(255,255,255,0.07);
+      --text: #fff;
+      --text-dim: #555;
+      --text-mid: #999;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Roboto Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* ── Canvas background ── */
+    #canvas-bg {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 48px;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .nav-logo img {
+      width: 28px;
+      height: 28px;
+    }
+
+    .nav-logo span { color: var(--red); }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-cta {
+      background: var(--red) !important;
+      color: #fff !important;
+      padding: 8px 18px;
+      border-radius: 3px;
+      transition: opacity 0.2s !important;
+    }
+
+    .nav-cta:hover { opacity: 0.85; }
+
+    /* ── Hero ── */
+    .hero {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--red-dim);
+      border: 1px solid var(--red-border);
+      color: var(--red);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 2px;
+      margin-bottom: 28px;
+    }
+
+    .hero-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--red);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 72px);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 24px;
+      max-width: 900px;
+    }
+
+    .hero h1 span { color: var(--red); }
+
+    .hero p {
+      font-size: clamp(13px, 1.5vw, 16px);
+      color: var(--text-mid);
+      line-height: 1.7;
+      max-width: 560px;
+      margin-bottom: 44px;
+      letter-spacing: 0.02em;
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn-primary {
+      background: var(--red);
+      color: #fff;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: 'Roboto Mono', monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.2s, transform 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary:hover { opacity: 0.85; transform: translateY(-1px); }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 14px 32px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'Roboto Mono', monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color 0.2s, transform 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-secondary:hover { border-color: rgba(255,255,255,0.3); transform: translateY(-1px); }
+
+    .hero-stats {
+      display: flex;
+      gap: 48px;
+      margin-top: 72px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--red);
+      letter-spacing: -0.02em;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* ── Section ── */
+    section {
+      position: relative;
+      z-index: 1;
+      padding: 100px 24px;
+    }
+
+    .section-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--red);
+      margin-bottom: 14px;
+    }
+
+    .section-title {
+      font-size: clamp(24px, 3.5vw, 42px);
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+      margin-bottom: 16px;
+    }
+
+    .section-sub {
+      font-size: 13px;
+      color: var(--text-mid);
+      line-height: 1.7;
+      max-width: 520px;
+      margin-bottom: 56px;
+    }
+
+    /* ── Features grid ── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      padding: 32px;
+      transition: background 0.2s;
+    }
+
+    .feature-card:hover { background: #0f0f0f; }
+
+    .feature-icon {
+      font-size: 28px;
+      margin-bottom: 16px;
+    }
+
+    .feature-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+
+    .feature-desc {
+      font-size: 11px;
+      color: var(--text-mid);
+      line-height: 1.7;
+      letter-spacing: 0.02em;
+    }
+
+    /* ── DAOs section ── */
+    .daos-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .dao-tag {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-mid);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      padding: 8px 16px;
+      border-radius: 2px;
+      transition: all 0.2s;
+    }
+
+    .dao-tag:hover {
+      border-color: var(--red-border);
+      color: var(--red);
+      background: var(--red-dim);
+    }
+
+    /* ── How it works ── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 32px;
+      counter-reset: steps;
+    }
+
+    .step {
+      counter-increment: steps;
+      position: relative;
+      padding-left: 20px;
+      border-left: 2px solid var(--border);
+      transition: border-color 0.2s;
+    }
+
+    .step:hover { border-color: var(--red); }
+
+    .step-num {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--red);
+      letter-spacing: 0.1em;
+      margin-bottom: 10px;
+    }
+
+    .step-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: 0.02em;
+    }
+
+    .step-desc {
+      font-size: 11px;
+      color: var(--text-mid);
+      line-height: 1.7;
+    }
+
+    /* ── CTA section ── */
+    .cta-section {
+      text-align: center;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .cta-section h2 {
+      font-size: clamp(24px, 3vw, 40px);
+      font-weight: 700;
+      margin-bottom: 16px;
+      letter-spacing: -0.01em;
+    }
+
+    .cta-section p {
+      font-size: 13px;
+      color: var(--text-mid);
+      margin-bottom: 36px;
+      line-height: 1.7;
+    }
+
+    /* ── Footer ── */
+    footer {
+      position: relative;
+      z-index: 1;
+      padding: 40px 48px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-logo {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+    }
+
+    .footer-logo span { color: var(--red); }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      list-style: none;
+    }
+
+    .footer-links a {
+      font-size: 10px;
+      color: var(--text-dim);
+      text-decoration: none;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover { color: var(--text); }
+
+    .footer-copy {
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0;
+    }
+
+    /* ── Ticker ── */
+    .ticker-wrap {
+      position: relative;
+      z-index: 1;
+      overflow: hidden;
+      background: var(--red);
+      padding: 10px 0;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .ticker {
+      display: flex;
+      gap: 48px;
+      animation: ticker 30s linear infinite;
+      white-space: nowrap;
+    }
+
+    .ticker-item {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    @keyframes ticker {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    @media (max-width: 768px) {
+      nav { padding: 16px 20px; }
+      .nav-links { display: none; }
+      footer { padding: 32px 20px; flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Animated canvas background -->
+<canvas id="canvas-bg"></canvas>
+
+<!-- Nav -->
+<nav>
+  <a href="/" class="nav-logo">
+    <img src="/assets/logo-B0bAD8my.png" alt="GovernCrypto" onerror="this.style.display='none'">
+    Govern<span>Crypto</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#daos">DAOs</a></li>
+    <li><a href="#how">How it works</a></li>
+    <li><a href="https://github.com/Codevesh090/GovernCrypto-extension" target="_blank">GitHub</a></li>
+    <li><a href="#install" class="nav-cta">Install Extension</a></li>
+  </ul>
+</nav>
+
+<!-- Ticker -->
+<div class="ticker-wrap" style="margin-top:64px;">
+  <div class="ticker">
+    <span class="ticker-item">⚡ AI Summaries</span>
+    <span class="ticker-item">🎙️ Voice AI</span>
+    <span class="ticker-item">🗳️ Gasless Voting</span>
+    <span class="ticker-item">🌐 15 Languages</span>
+    <span class="ticker-item">🔗 WalletConnect</span>
+    <span class="ticker-item">📊 10+ DAOs</span>
+    <span class="ticker-item">🎨 4 Themes</span>
+    <span class="ticker-item">⚡ AI Summaries</span>
+    <span class="ticker-item">🎙️ Voice AI</span>
+    <span class="ticker-item">🗳️ Gasless Voting</span>
+    <span class="ticker-item">🌐 15 Languages</span>
+    <span class="ticker-item">🔗 WalletConnect</span>
+    <span class="ticker-item">📊 10+ DAOs</span>
+    <span class="ticker-item">🎨 4 Themes</span>
+  </div>
+</div>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-badge">Chrome Extension — Free to Use</div>
+  <h1>DAOs need voters.<br><span>Voters need this.</span></h1>
+  <p>GovernCrypto turns DAO governance into a conversation. Understand proposals instantly with AI, ask questions by voice, and cast votes — all without leaving your browser.</p>
+  <div class="hero-buttons">
+    <a href="#install" class="btn-primary">⬇ Install Extension</a>
+    <a href="https://github.com/Codevesh090/GovernCrypto-extension" target="_blank" class="btn-secondary">★ View on GitHub</a>
+  </div>
+  <div class="hero-stats">
+    <div class="stat">
+      <div class="stat-number">10+</div>
+      <div class="stat-label">DAOs Supported</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">15</div>
+      <div class="stat-label">Languages</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">600+</div>
+      <div class="stat-label">Wallets via WalletConnect</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">0</div>
+      <div class="stat-label">Gas Fees to Vote</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- Features -->
+<section id="features">
+  <div class="section-inner">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">Everything you need to<br>govern smarter</h2>
+    <p class="section-sub">From AI-powered summaries to native voice conversations — GovernCrypto makes DAO participation effortless.</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <div class="feature-title">AI Proposal Summaries</div>
+        <div class="feature-desc">Instant Mistral AI summaries of any proposal. Understand what you're voting on in seconds — not hours.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎙️</div>
+        <div class="feature-title">Voice AI Assistant</div>
+        <div class="feature-desc">Say "Hey" to ask questions about any proposal by voice. Powered by ElevenLabs with native accent voices.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌐</div>
+        <div class="feature-title">15 Languages</div>
+        <div class="feature-desc">Summaries and voice responses in English, Hindi, Hinglish, Spanish, French, German, Chinese, Japanese and more.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗳️</div>
+        <div class="feature-title">Gasless Voting</div>
+        <div class="feature-desc">Cast votes directly via EIP-712 signing through Snapshot. No gas fees. No blockchain transactions.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔗</div>
+        <div class="feature-title">WalletConnect</div>
+        <div class="feature-desc">Connect MetaMask, Backpack, Coinbase or any of 600+ wallets via WalletConnect v2.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎨</div>
+        <div class="feature-title">4 Themes</div>
+        <div class="feature-desc">Dark, Midnight, Ocean, and Light themes. Your governance dashboard, your style.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔊</div>
+        <div class="feature-title">Sound Effects</div>
+        <div class="feature-desc">Professional UI sounds for every interaction. Toggle on or off in voice settings.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📡</div>
+        <div class="feature-title">Offline Detection</div>
+        <div class="feature-desc">Smart offline banner keeps you informed when your connection drops. Never miss a vote deadline.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <div class="feature-title">Privacy First</div>
+        <div class="feature-desc">API keys stored locally in chrome.storage. Never sent to any server other than the respective APIs.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- DAOs -->
+<section id="daos">
+  <div class="section-inner">
+    <div class="section-label">Supported DAOs</div>
+    <h2 class="section-title">10+ major DAOs,<br>all in one place</h2>
+    <p class="section-sub">Browse active proposals from the biggest names in DeFi governance — all in a single Chrome extension.</p>
+    <div class="daos-grid">
+      <div class="dao-tag">ENS</div>
+      <div class="dao-tag">Uniswap</div>
+      <div class="dao-tag">Aave</div>
+      <div class="dao-tag">MakerDAO</div>
+      <div class="dao-tag">Compound</div>
+      <div class="dao-tag">Curve</div>
+      <div class="dao-tag">Balancer</div>
+      <div class="dao-tag">SushiSwap</div>
+      <div class="dao-tag">Gitcoin</div>
+      <div class="dao-tag">Arbitrum</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- How it works -->
+<section id="how">
+  <div class="section-inner">
+    <div class="section-label">How it works</div>
+    <h2 class="section-title">From install to vote<br>in under 2 minutes</h2>
+    <p class="section-sub">GovernCrypto is designed to get out of your way and let you focus on what matters — making informed governance decisions.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01 — Install</div>
+        <div class="step-title">Load the Extension</div>
+        <div class="step-desc">Download from GitHub and load as an unpacked Chrome extension. Takes 30 seconds.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">02 — Setup</div>
+        <div class="step-title">Enter API Keys</div>
+        <div class="step-desc">Add your Mistral AI and ElevenLabs API keys. Stored locally, never shared.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">03 — Connect</div>
+        <div class="step-title">Connect Your Wallet</div>
+        <div class="step-desc">Choose from MetaMask, Backpack, Coinbase or any WalletConnect wallet.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">04 — Explore</div>
+        <div class="step-title">Browse Proposals</div>
+        <div class="step-desc">See active proposals across all supported DAOs with AI summaries ready instantly.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">05 — Ask</div>
+        <div class="step-title">Ask by Voice</div>
+        <div class="step-desc">Say "Hey" to start a voice conversation about any proposal in your language.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">06 — Vote</div>
+        <div class="step-title">Cast Your Vote</div>
+        <div class="step-desc">Vote Yes or No with a single click. Gasless EIP-712 signing via Snapshot.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- CTA -->
+<section class="cta-section" id="install">
+  <div class="section-inner">
+    <div class="section-label">Get Started</div>
+    <h2>Ready to govern smarter?</h2>
+    <p>Install GovernCrypto and start participating in DAO governance today.<br>Free. Open source. No tracking.</p>
+    <div class="hero-buttons" style="justify-content:center;">
+      <a href="https://github.com/Codevesh090/GovernCrypto-extension" target="_blank" class="btn-primary">⬇ Download from GitHub</a>
+      <a href="https://github.com/Codevesh090/GovernCrypto-extension#quick-start-use-directly" target="_blank" class="btn-secondary">📖 Read the Docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-logo">Govern<span>Crypto</span></div>
+  <ul class="footer-links">
+    <li><a href="https://github.com/Codevesh090/GovernCrypto-extension" target="_blank">GitHub</a></li>
+    <li><a href="https://snapshot.org" target="_blank">Snapshot</a></li>
+    <li><a href="https://console.mistral.ai" target="_blank">Mistral AI</a></li>
+    <li><a href="https://elevenlabs.io" target="_blank">ElevenLabs</a></li>
+  </ul>
+  <div class="footer-copy">© 2026 GovernCrypto — MIT License</div>
+</footer>
+
+<script>
+  // ── Animated crypto coins canvas ──
+  const canvas = document.getElementById('canvas-bg');
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const SYMBOLS = ['₿', 'Ξ', '◎', '⬡', '◈', '⬢', '⬟', '◇', '⬙', '◆'];
+  const COLORS = ['rgba(239,6,6,', 'rgba(255,255,255,'];
+
+  class Coin {
+    constructor() { this.reset(true); }
+
+    reset(initial = false) {
+      this.x = Math.random() * canvas.width;
+      this.y = initial ? Math.random() * canvas.height : canvas.height + 40;
+      this.size = 10 + Math.random() * 18;
+      this.speed = 0.3 + Math.random() * 0.6;
+      this.rotation = Math.random() * Math.PI * 2;
+      this.rotSpeed = (Math.random() - 0.5) * 0.02;
+      this.opacity = 0.04 + Math.random() * 0.08;
+      this.symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+      this.colorBase = COLORS[Math.floor(Math.random() * COLORS.length)];
+      this.drift = (Math.random() - 0.5) * 0.3;
+    }
+
+    update() {
+      this.y -= this.speed;
+      this.x += this.drift;
+      this.rotation += this.rotSpeed;
+      if (this.y < -40) this.reset();
+    }
+
+    draw() {
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.rotation);
+      ctx.font = `${this.size}px 'Roboto Mono', monospace`;
+      ctx.fillStyle = this.colorBase + this.opacity + ')';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.symbol, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  const coins = Array.from({ length: 60 }, () => new Coin());
+
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    coins.forEach(c => { c.update(); c.draw(); });
+    requestAnimationFrame(animate);
+  }
+  animate();
+</script>
+
+</body>
+</html>

@@ -315,6 +315,7 @@ MIT
 ## Links
 
 - **Extension**: Load from `dist/` folder
-- **Hosted Page**: [governcrypto.xyz](https://governcrypto.xyz)
+- **Landing Page**: [governcrypto.xyz](https://governcrypto.xyz)
+- **Wallet Connect**: [governcrypto.xyz/connectwallet](https://governcrypto.xyz/connectwallet)
 - **Snapshot**: [snapshot.org](https://snapshot.org)
 - **WalletConnect Cloud**: [cloud.walletconnect.com](https://cloud.walletconnect.com)
